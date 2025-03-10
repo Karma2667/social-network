@@ -1,0 +1,22 @@
+body {
+  background-color: #f8f9fa;
+  font-family: 'Arial', sans-serif;
+}
+
+h1, h2 {
+  color: #343a40;
+}
+
+.profile-card {
+  border: none;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.profile-avatar {
+  border: 2px solid #fff;
+}
+
+.btn-edit {
+  border-radius: 20px;
+  padding: 5px 15px;
+}
