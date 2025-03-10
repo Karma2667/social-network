@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import User from '@/models/User'; // Явный импорт
+import User from '@/models/User';
 import Post from '@/models/Post';
 import Message from '@/models/Message';
 import Community from '@/models/Community';
@@ -26,7 +26,10 @@ async function dbConnect() {
       bufferCommands: false,
     };
     cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
-      console.log('MongoDB connected and models registered');
+      mongoose.model('User', User.schema);
+      mongoose.model('Post', Post.schema);
+      mongoose.model('Message', Message.schema);
+      mongoose.model('Community', Community.schema);
       return mongoose;
     });
   }
