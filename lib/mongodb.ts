@@ -3,6 +3,7 @@ import User from '@/models/User';
 import Post from '@/models/Post';
 import Message from '@/models/Message';
 import Community from '@/models/Community';
+import Notification from '@/models/Notification';
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/social-network';
 
@@ -30,6 +31,7 @@ async function dbConnect() {
       mongoose.model('Post', Post.schema);
       mongoose.model('Message', Message.schema);
       mongoose.model('Community', Community.schema);
+      mongoose.model('Notification', Notification.schema);
       return mongoose;
     });
   }

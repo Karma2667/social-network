@@ -3,14 +3,13 @@
 import { useState, useEffect } from 'react';
 import { Container, Row, Col, Form, Button } from 'react-bootstrap';
 import AppNavbar from './Components/Navbar';
-import Post from './Components/Post';
+import Post from './Components/Post'
 
-export default function Home() {
+export default function Home({ userId }: { userId: string }) { // Указываем тип для userId
   const [posts, setPosts] = useState<any[]>([]);
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const userId = '67bb0134b8e5bcf5a2c30fb4'; // Пока захардкодим
 
   useEffect(() => {
     fetchPosts();
@@ -75,7 +74,7 @@ export default function Home() {
                 content={post.content}
                 createdAt={post.createdAt}
                 userId={post.user._id}
-                likes={post.likes.map((id: any) => id.toString())} // Преобразуем ObjectId в строки
+                likes={post.likes.map((id: any) => id.toString())}
                 postId={post._id}
               />
             ))}
