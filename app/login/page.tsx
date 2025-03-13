@@ -20,10 +20,12 @@ export default function Login() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Login failed');
-      localStorage.setItem('userId', data.userId); // Сохраняем userId
-      router.push('/'); // Перенаправляем на главную
+      localStorage.setItem('userId', data.userId);
+      window.dispatchEvent(new Event('userIdUpdated'));
+      router.push('/');
     } catch (err: any) {
       setError(err.message);
+      console.error('Login error:', err.message);
     }
   };
 

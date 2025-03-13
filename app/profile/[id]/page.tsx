@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react';
 import { Container, Row, Col } from 'react-bootstrap';
 import AppNavbar from '@/app/Components/Navbar';
 import Post from '@/app/Components/Post';
+import React from 'react'; // Добавляем импорт React для use()
 
-
-export default function Profile({ params }: { params: { id: string } }) {
+export default function Profile({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = React.use(params); // Распаковываем params
   const [profile, setProfile] = useState<any>(null);
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -14,7 +15,7 @@ export default function Profile({ params }: { params: { id: string } }) {
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const res = await fetch(`/api/users/${params.id}`);
+        const res = await fetch(`/api/users/${resolvedParams.id}`); // Используем resolvedParams
         const data = await res.json();
         setProfile(data);
         setPosts(data.posts || []);
@@ -25,14 +26,14 @@ export default function Profile({ params }: { params: { id: string } }) {
       }
     };
     fetchProfile();
-  }, [params.id]);
+  }, [resolvedParams.id]); // Зависимость от resolvedParams.id
 
   if (loading) return <div>Loading...</div>;
   if (!profile) return <div>User not found</div>;
 
   return (
     <>
-      <AppNavbar userId={params.id} />
+      <AppNavbar userId={resolvedParams.id} />
       <Container className="my-4">
         <Row>
           <Col md={{ span: 6, offset: 3 }}>
@@ -46,8 +47,8 @@ export default function Profile({ params }: { params: { id: string } }) {
                 content={post.content}
                 createdAt={post.createdAt}
                 userId={post.user._id}
-                likes={post.likes.map((id: any) => id.toString())} // Добавляем likes, если есть
-                postId={post._id} // Добавляем postId
+                likes={post.likes.map((id: any) => id.toString())}
+                postId={post._id}
               />
             ))}
           </Col>
