@@ -10,17 +10,41 @@ export async function GET(request: Request) {
   const recipientId = searchParams.get('recipientId');
 
   try {
-    const messages = await Message.find({
-      $or: [
-        { sender: userId, recipient: recipientId },
-        { sender: recipientId, recipient: userId },
-      ],
-    })
-      .populate('sender', 'username')
-      .populate('recipient', 'username')
-      .sort({ createdAt: 1 });
+    if (recipientId) {
+      // Возвращаем сообщения между userId и recipientId
+      const messages = await Message.find({
+        $or: [
+          { sender: userId, recipient: recipientId },
+          { sender: recipientId, recipient: userId },
+        ],
+      })
+        .populate('sender', 'username')
+        .populate('recipient', 'username')
+        .sort({ createdAt: 1 });
+      return NextResponse.json(messages);
+    } else {
+      // Возвращаем список всех чатов (уникальных собеседников)
+      const messages = await Message.find({
+        $or: [{ sender: userId }, { recipient: userId }],
+      })
+        .populate('sender', 'username')
+        .populate('recipient', 'username')
+        .sort({ createdAt: -1 });
 
-    return NextResponse.json(messages);
+      // Группируем по собеседникам
+      const chatList = Array.from(
+        new Map(
+          messages.map((msg) => {
+            const otherUserId =
+              msg.sender._id.toString() === userId ? msg.recipient._id.toString() : msg.sender._id.toString();
+            const otherUsername =
+              msg.sender._id.toString() === userId ? msg.recipient.username : msg.sender.username;
+            return [otherUserId, { userId: otherUserId, username: otherUsername, lastMessage: msg }];
+          })
+        ).values()
+      );
+      return NextResponse.json(chatList);
+    }
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Fetch messages error:', errorMessage);
