@@ -12,7 +12,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
     return NextResponse.json(user);
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('Fetch user error:', errorMessage);
+    console.error('GET user error:', errorMessage);
     return NextResponse.json({ error: 'Failed to fetch user' }, { status: 500 });
   }
 }

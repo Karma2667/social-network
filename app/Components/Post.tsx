@@ -1,28 +1,37 @@
+// app/Components/Post.tsx
 'use client';
 
 import { Card, Button } from 'react-bootstrap';
 import Link from 'next/link';
 import { useState } from 'react';
+import { useAuth } from '@/lib/AuthContext';
 
-export default function Post({ username, content, createdAt, userId, likes = [], postId }: { 
-  username: string; 
-  content: string; 
-  createdAt: string; 
-  userId: string; 
-  likes?: string[]; 
+export default function Post({
+  username = 'Unknown',
+  content = 'No content',
+  createdAt = Date.now().toString(),
+  userId = 'unknown',
+  likes = [],
+  postId,
+}: {
+  username?: string;
+  content?: string;
+  createdAt?: string;
+  userId?: string;
+  likes?: string[];
   postId: string;
 }) {
-  const currentUserId = '67bb0134b8e5bcf5a2c30fb4'; // Пока захардкодим
+  const { userId: currentUserId } = useAuth();
   const [localLikes, setLocalLikes] = useState(likes);
   const [isLiking, setIsLiking] = useState(false);
 
   const handleLike = async () => {
-    if (isLiking) return;
+    if (isLiking || !currentUserId) return;
     setIsLiking(true);
     try {
       const res = await fetch(`/api/posts/${postId}/like`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-user-id': currentUserId },
         body: JSON.stringify({ userId: currentUserId }),
       });
       if (!res.ok) {
@@ -33,7 +42,7 @@ export default function Post({ username, content, createdAt, userId, likes = [],
       setLocalLikes(updatedPost.likes.map((id: any) => id.toString()));
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('Like error:', errorMessage); // Оставим только ошибку
+      console.error('Like error:', errorMessage);
     } finally {
       setIsLiking(false);
     }
@@ -47,11 +56,11 @@ export default function Post({ username, content, createdAt, userId, likes = [],
         </Card.Subtitle>
         <Card.Text>{content}</Card.Text>
         <div>
-          <Button 
-            variant="outline-primary" 
-            size="sm" 
-            onClick={handleLike} 
-            disabled={isLiking}
+          <Button
+            variant="outline-primary"
+            size="sm"
+            onClick={handleLike}
+            disabled={isLiking || !currentUserId}
           >
             {localLikes.includes(currentUserId) ? 'Unlike' : 'Like'} ({localLikes.length})
           </Button>

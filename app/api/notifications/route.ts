@@ -22,7 +22,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   await dbConnect();
   try {
-    const { userId, type, content, relatedId, relatedModel } = await request.json();
+    const { userId, type, content, relatedId, relatedModel, senderId } = await request.json();
     if (!userId || !type || !content) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
@@ -32,6 +32,7 @@ export async function POST(request: Request) {
       content,
       relatedId,
       relatedModel,
+      senderId, // Добавляем senderId
     });
     return NextResponse.json(notification, { status: 201 });
   } catch (error: unknown) {

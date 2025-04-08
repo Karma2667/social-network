@@ -11,7 +11,6 @@ export async function GET(request: Request) {
 
   try {
     if (recipientId) {
-      // Возвращаем сообщения между userId и recipientId
       const messages = await Message.find({
         $or: [
           { sender: userId, recipient: recipientId },
@@ -23,7 +22,6 @@ export async function GET(request: Request) {
         .sort({ createdAt: 1 });
       return NextResponse.json(messages);
     } else {
-      // Возвращаем список всех чатов (уникальных собеседников)
       const messages = await Message.find({
         $or: [{ sender: userId }, { recipient: userId }],
       })
@@ -31,7 +29,6 @@ export async function GET(request: Request) {
         .populate('recipient', 'username')
         .sort({ createdAt: -1 });
 
-      // Группируем по собеседникам
       const chatList = Array.from(
         new Map(
           messages.map((msg) => {
@@ -60,12 +57,34 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    const sender = await User.findById(senderId);
+    if (!sender) {
+      return NextResponse.json({ error: 'Sender not found' }, { status: 404 });
+    }
+
     const message = await Message.create({
       sender: senderId,
       recipient: recipientId,
       content,
       read: false,
     });
+
+    const notificationRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/notifications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: recipientId,
+        type: 'message',
+        content: `${sender.username} sent you a message`,
+        relatedId: message._id,
+        relatedModel: 'Message',
+        senderId: senderId, // Добавляем senderId
+      }),
+    });
+
+    if (!notificationRes.ok) {
+      console.error('Failed to create notification:', await notificationRes.text());
+    }
 
     return NextResponse.json(message, { status: 201 });
   } catch (error: unknown) {

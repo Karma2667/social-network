@@ -1,32 +1,22 @@
+// lib/AuthContext.ts
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 
-const AuthContext = createContext<{ userId: string | null }>({ userId: null });
+interface AuthContextType {
+  userId: string | null;
+}
+
+const AuthContext = createContext<AuthContextType>({ userId: null });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [userId, setUserId] = useState<string | null>(() => localStorage.getItem('userId'));
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    const updateUserId = () => {
-      const currentUserId = localStorage.getItem('userId');
-      if (currentUserId !== userId) {
-        setUserId(currentUserId);
-      }
-    };
-
-    window.addEventListener('userIdUpdated', updateUserId);
-    window.addEventListener('storage', updateUserId);
-    const interval = setInterval(updateUserId, 100);
-
-    return () => {
-      window.removeEventListener('userIdUpdated', updateUserId);
-      window.removeEventListener('storage', updateUserId);
-      clearInterval(interval);
-    };
-  }, [userId]);
-
-  console.log('AuthProvider userId:', userId);
+    const storedUserId = localStorage.getItem('userId');
+    console.log('AuthProvider: Loaded userId from localStorage:', storedUserId); // Отладка
+    setUserId(storedUserId);
+  }, []);
 
   return (
     <AuthContext.Provider value={{ userId }}>
@@ -35,4 +25,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export const useAuth = () => useContext(AuthContext);
+export function useAuth() {
+  return useContext(AuthContext);
+}

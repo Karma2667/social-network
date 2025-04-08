@@ -5,6 +5,12 @@ const CommunitySchema = new Schema({
   description: { type: String, default: '' },
   creator: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   members: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+  invites: [
+    {
+      user: { type: Schema.Types.ObjectId, ref: 'User' },
+      status: { type: String, enum: ['pending', 'accepted', 'rejected'], default: 'pending' },
+    },
+  ],
   createdAt: { type: Date, default: Date.now },
 });
 

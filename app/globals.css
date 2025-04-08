@@ -20,3 +20,26 @@ h1, h2 {
   border-radius: 20px;
   padding: 5px 15px;
 }
+.notification-item {
+  max-width: 250px; /* Уменьшаем ширину для большей компактности */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block; /* Убеждаемся, что элемент блочный */
+}
+
+.notifications-dropdown {
+  max-width: 300px; /* Ограничиваем ширину всего меню */
+  word-wrap: break-word; /* На случай, если текст всё же переносится */
+}
+
+/* Переопределяем стили Bootstrap, если они мешают */
+.dropdown-menu {
+  max-width: 300px !important; /* Принудительно ограничиваем меню */
+}
+
+.dropdown-item {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
