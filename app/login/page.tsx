@@ -12,26 +12,35 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     try {
-      const res = await fetch('/api/auth/login', {
+      console.log('Login: Попытка входа с email:', email);
+      const res = await fetch('/api/users/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Login failed');
-      localStorage.setItem('userId', data.userId);
-      window.dispatchEvent(new Event('userIdUpdated'));
-      router.push('/');
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Не удалось войти');
+      }
+      const { userId } = await res.json();
+      console.log('Login: Успешный вход, userId:', userId);
+      localStorage.setItem('userId', userId);
+      console.log('Login: userId сохранен в localStorage:', localStorage.getItem('userId'));
+      // Задержка для синхронизации localStorage
+      setTimeout(() => {
+        router.push('/');
+      }, 100);
     } catch (err: any) {
+      console.error('Login: Ошибка входа:', err);
       setError(err.message);
-      console.error('Login error:', err.message);
     }
   };
 
   return (
     <Container className="my-4">
-      <h1>Login</h1>
+      <h2>Вход</h2>
       {error && <Alert variant="danger">{error}</Alert>}
       <Form onSubmit={handleSubmit}>
         <Form.Group className="mb-3">
@@ -40,20 +49,28 @@ export default function Login() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="Enter email"
+            placeholder="Введите email"
+            required
           />
         </Form.Group>
         <Form.Group className="mb-3">
-          <Form.Label>Password</Form.Label>
+          <Form.Label>Пароль</Form.Label>
           <Form.Control
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter password"
+            placeholder="Введите пароль"
+            required
           />
         </Form.Group>
-        <Button variant="primary" type="submit">
-          Login
+        <Button variant="primary" type="submit" className="me-2">
+          Войти
+        </Button>
+        <Button
+          variant="outline-primary"
+          onClick={() => router.push('/register')}
+        >
+          Регистрация
         </Button>
       </Form>
     </Container>

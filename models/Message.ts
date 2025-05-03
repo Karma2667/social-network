@@ -1,11 +1,17 @@
-import mongoose, { Schema } from 'mongoose';
+import mongoose, { Schema, Document } from 'mongoose';
 
-const MessageSchema = new Schema({
-  sender: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-  recipient: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+export interface IMessage extends Document {
+  senderId: string;
+  recipientId: string;
+  content: string;
+  createdAt: Date;
+}
+
+const MessageSchema: Schema = new Schema({
+  senderId: { type: String, required: true },
+  recipientId: { type: String, required: true },
   content: { type: String, required: true },
-  createdAt: { type: Date, default: Date.now },
-  read: { type: Boolean, default: false }, // Прочитано ли сообщение
+  createdAt: { type: Date, required: true },
 });
 
-export default mongoose.models.Message || mongoose.model('Message', MessageSchema);
+export default mongoose.models.Message || mongoose.model<IMessage>('Message', MessageSchema);

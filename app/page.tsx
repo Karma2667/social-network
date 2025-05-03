@@ -1,77 +1,143 @@
-// app/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Container, Row, Col, Form, Button } from 'react-bootstrap';
-import AppNavbar from './Components/Navbar';
-import Post from './Components/Post';
+import Post from '@/app/Components/Post';
+import AppNavbar from '@/app/Components/Navbar';
 import { useAuth } from '@/lib/AuthContext';
 
+interface PostData {
+  _id: string;
+  content: string;
+  user: { _id: string; username: string; avatar?: string };
+  community?: { _id: string; name: string };
+  createdAt: string;
+  likes: string[];
+  images: string[];
+}
+
 export default function Home() {
-  const { userId } = useAuth();
-  const [posts, setPosts] = useState<any[]>([]);
+  const { userId, isInitialized, setUserId } = useAuth();
+  const [posts, setPosts] = useState<PostData[]>([]);
   const [content, setContent] = useState('');
+  const [images, setImages] = useState<File[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    console.log('Home: userId from useAuth:', userId); // Отладка
+  const fetchPosts = useCallback(async () => {
     if (!userId) return;
-    fetchPosts();
-  }, [userId]);
-
-  const fetchPosts = async () => {
     try {
-      setLoading(true);
+      console.log('Home: Fetching posts with userId:', userId);
       const res = await fetch('/api/posts', {
-        headers: { 'x-user-id': userId || '' },
+        headers: { 'x-user-id': userId },
         cache: 'no-store',
       });
-      if (!res.ok) throw new Error('Failed to fetch posts');
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.error('Home: Ошибка API:', errorData);
+        throw new Error(errorData.details || errorData.error || 'Не удалось загрузить посты');
+      }
       const data = await res.json();
-      console.log('Fetched posts:', data);
-      setPosts(data);
+      console.log('Home: Fetched posts:', data);
+      setPosts(data || []);
+      setError(null);
     } catch (err: any) {
+      console.error('Home: Ошибка загрузки постов:', err.message);
       setError(err.message);
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [userId]);
+
+  useEffect(() => {
+    console.log('Home: userId from useAuth:', userId, 'isInitialized:', isInitialized);
+    if (!isInitialized) {
+      console.log('Home: Ожидание инициализации AuthContext');
+      return;
+    }
+    const storedUserId = localStorage.getItem('userId');
+    if (!userId && storedUserId) {
+      console.log('Home: userId отсутствует, но найден в localStorage:', storedUserId);
+      setUserId(storedUserId);
+      return;
+    }
+    if (!userId && !storedUserId) {
+      console.log('Home: Нет userId, перенаправление на /login');
+      window.location.replace('/login');
+      return;
+    }
+    if (userId) {
+      setLoading(true);
+      fetchPosts().finally(() => setLoading(false));
+    }
+  }, [userId, isInitialized, fetchPosts, setUserId]);
 
   const handlePostSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!content) {
-      setError('Content is required');
+      console.error('Home: Требуется текст поста');
+      setError('Требуется текст поста');
       return;
     }
     if (!userId) {
-      setError('User not authenticated');
-      console.log('No userId available for POST request'); // Отладка
+      console.error('Home: Пользователь не аутентифицирован');
+      setError('Пользователь не аутентифицирован');
       return;
     }
     try {
+      let imagePaths: string[] = [];
+      if (images.length > 0) {
+        const formData = new FormData();
+        images.forEach((file) => formData.append('files', file));
+        const uploadRes = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+        if (!uploadRes.ok) {
+          const errorData = await uploadRes.json();
+          throw new Error(errorData.error || 'Не удалось загрузить изображения');
+        }
+        const { files } = await uploadRes.json();
+        imagePaths = files;
+      }
+
+      const postData = {
+        userId,
+        content,
+        images: imagePaths,
+      };
+
       const res = await fetch('/api/posts', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': userId,
         },
-        body: JSON.stringify({ userId, content }), // Без communityId
+        body: JSON.stringify(postData),
       });
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.error || 'Failed to create post');
+        throw new Error(errorData.error || 'Не удалось создать пост');
       }
       setContent('');
-      fetchPosts();
+      setImages([]);
+      setError(null);
+      await fetchPosts();
     } catch (err: any) {
+      console.error('Home: Ошибка создания поста:', err.message);
       setError(err.message);
     }
   };
 
-  if (!userId) return <div>Please log in to view this page</div>;
-  if (loading) return <div>Loading...</div>;
-  if (error) return <div>{error}</div>;
+  if (!isInitialized) {
+    console.log('Home: Рендеринг: Ожидание инициализации AuthContext');
+    return <div>Загрузка...</div>;
+  }
+  if (!userId && !localStorage.getItem('userId')) {
+    console.log('Home: Рендеринг: Нет userId, перенаправление на /login');
+    window.location.replace('/login');
+    return null;
+  }
+
+  if (loading) return <div>Загрузка...</div>;
 
   return (
     <>
@@ -79,37 +145,53 @@ export default function Home() {
       <Container className="my-4">
         <Row>
           <Col md={{ span: 8, offset: 2 }}>
-          <Button variant="primary" href="/communities" className="mb-3">
-              Go to Communities
-            </Button>
+            {error && <div className="alert alert-danger">{error}</div>}
             <Form onSubmit={handlePostSubmit} className="mb-4">
-              <Form.Group className="d-flex">
+              <Form.Group className="mb-3">
                 <Form.Control
                   as="textarea"
                   rows={3}
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
-                  placeholder="Write a post..."
+                  placeholder="Напишите пост..."
                 />
-                <Button variant="primary" type="submit" className="ms-2">
-                  Post
-                </Button>
               </Form.Group>
-              {error && <p className="text-danger mt-2">{error}</p>}
+              <Form.Group className="mb-3">
+                <Form.Label>Загрузить изображения</Form.Label>
+                <Form.Control
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => {
+                    const files = (e.target as HTMLInputElement).files;
+                    if (files) setImages(Array.from(files));
+                  }}
+                />
+              </Form.Group>
+              <Button variant="primary" type="submit">
+                Опубликовать
+              </Button>
             </Form>
-            <h3>Posts</h3>
+            <h3>Посты</h3>
             {posts.length === 0 ? (
-              <p>No posts yet</p>
+              <p>Пока нет постов</p>
             ) : (
               posts.map((post) => (
                 <Post
                   key={post._id}
-                  username={post.user?.username || 'Unknown'}
-                  content={post.content || 'No content'}
+                  username={
+                    post.community
+                      ? `${post.user?.username || 'Неизвестный'} в ${post.community.name}`
+                      : post.user?.username || 'Неизвестный'
+                  }
+                  content={post.content || 'Нет содержимого'}
                   createdAt={post.createdAt || Date.now()}
-                  userId={post.user?._id || 'unknown'}
-                  likes={post.likes || []}
-                  postId={post._id}
+                  userId={post.user?._id?.toString() || post.user?.toString() || 'unknown'}
+                  likes={post.likes?.map((id: any) => id.toString()) || []}
+                  images={post.images || []}
+                  postId={post._id.toString()}
+                  fetchPosts={fetchPosts}
+                  userAvatar={post.user?.avatar || '/default-avatar.png'}
                 />
               ))
             )}

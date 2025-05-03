@@ -1,95 +1,63 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Message from '@/models/Message';
-import User from '@/models/User';
 
 export async function GET(request: Request) {
   await dbConnect();
-  const { searchParams } = new URL(request.url);
-  const userId = searchParams.get('userId');
-  const recipientId = searchParams.get('recipientId');
-
   try {
-    if (recipientId) {
-      const messages = await Message.find({
-        $or: [
-          { sender: userId, recipient: recipientId },
-          { sender: recipientId, recipient: userId },
-        ],
-      })
-        .populate('sender', 'username')
-        .populate('recipient', 'username')
-        .sort({ createdAt: 1 });
-      return NextResponse.json(messages);
-    } else {
-      const messages = await Message.find({
-        $or: [{ sender: userId }, { recipient: userId }],
-      })
-        .populate('sender', 'username')
-        .populate('recipient', 'username')
-        .sort({ createdAt: -1 });
+    console.log('Messages API: GET запрос на получение сообщений');
+    const userId = request.headers.get('x-user-id');
+    const recipientId = request.headers.get('x-recipient-id');
+    console.log('Messages API: Параметры:', { userId, recipientId });
 
-      const chatList = Array.from(
-        new Map(
-          messages.map((msg) => {
-            const otherUserId =
-              msg.sender._id.toString() === userId ? msg.recipient._id.toString() : msg.sender._id.toString();
-            const otherUsername =
-              msg.sender._id.toString() === userId ? msg.recipient.username : msg.sender.username;
-            return [otherUserId, { userId: otherUserId, username: otherUsername, lastMessage: msg }];
-          })
-        ).values()
-      );
-      return NextResponse.json(chatList);
+    if (!userId || !recipientId) {
+      console.error('Messages API: Отсутствует userId или recipientId');
+      return NextResponse.json({ error: 'Не указан пользователь или получатель' }, { status: 400 });
     }
+
+    const messages = await Message.find({
+      $or: [
+        { senderId: userId, recipientId },
+        { senderId: recipientId, recipientId: userId },
+      ],
+    })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    console.log('Messages API: Сообщения найдены, количество:', messages.length);
+    return NextResponse.json(messages, { status: 200 });
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('Fetch messages error:', errorMessage);
-    return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+    console.error('Messages API: Ошибка получения сообщений:', errorMessage);
+    return NextResponse.json({ error: 'Не удалось загрузить сообщения', details: errorMessage }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
   await dbConnect();
   try {
-    const { senderId, recipientId, content } = await request.json();
-    if (!senderId || !recipientId || !content) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-    }
+    console.log('Messages API: POST запрос на отправку сообщения');
+    const userId = request.headers.get('x-user-id');
+    const { recipientId, content } = await request.json();
+    console.log('Messages API: Параметры:', { userId, recipientId, content });
 
-    const sender = await User.findById(senderId);
-    if (!sender) {
-      return NextResponse.json({ error: 'Sender not found' }, { status: 404 });
+    if (!userId || !recipientId || !content) {
+      console.error('Messages API: Отсутствуют обязательные поля');
+      return NextResponse.json({ error: 'Не указан пользователь, получатель или сообщение' }, { status: 400 });
     }
 
     const message = await Message.create({
-      sender: senderId,
-      recipient: recipientId,
+      senderId: userId,
+      recipientId,
       content,
-      read: false,
+      createdAt: new Date(),
     });
 
-    const notificationRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/notifications`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId: recipientId,
-        type: 'message',
-        content: `${sender.username} sent you a message`,
-        relatedId: message._id,
-        relatedModel: 'Message',
-        senderId: senderId, // Добавляем senderId
-      }),
-    });
-
-    if (!notificationRes.ok) {
-      console.error('Failed to create notification:', await notificationRes.text());
-    }
-
+    console.log('Messages API: Сообщение создано, ID:', message._id);
     return NextResponse.json(message, { status: 201 });
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('Send message error:', errorMessage);
-    return NextResponse.json({ error: 'Failed to send message' }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+    console.error('Messages API: Ошибка отправки сообщения:', errorMessage);
+    return NextResponse.json({ error: 'Не удалось отправить сообщение', details: errorMessage }, { status: 500 });
   }
 }

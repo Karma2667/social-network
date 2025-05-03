@@ -1,111 +1,145 @@
-// app/communities/[id]/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
-import { Container, Row, Col, Card, Form, Button } from 'react-bootstrap';
-import AppNavbar from '@/app/Components/Navbar';
+import { useState, useEffect, useCallback } from 'react';
+import { Container, Row, Col, Form, Button } from 'react-bootstrap';
 import Post from '@/app/Components/Post';
+import AppNavbar from '@/app/Components/Navbar';
 import { useAuth } from '@/lib/AuthContext';
+import { use } from 'react';
 
-export default function CommunityPage() {
-  const { id } = useParams();
+interface PostData {
+  _id: string;
+  content: string;
+  user: { _id: string; username: string; avatar?: string };
+  community?: { _id: string; name: string };
+  createdAt: string;
+  likes: string[];
+  images: string[];
+}
+
+interface CommunityData {
+  _id: string;
+  name: string;
+  description: string;
+  creator: { username: string };
+  members: { username: string }[];
+}
+
+export default function CommunityPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const { userId } = useAuth();
-  const [community, setCommunity] = useState<any>(null);
-  const [posts, setPosts] = useState<any[]>([]);
+  const [community, setCommunity] = useState<CommunityData | null>(null);
+  const [posts, setPosts] = useState<PostData[]>([]);
   const [content, setContent] = useState('');
-  const [inviteeId, setInviteeId] = useState('');
+  const [images, setImages] = useState<File[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!userId) return;
-    fetchCommunity();
-    fetchPosts();
-  }, [id, userId]);
-
-  const fetchCommunity = async () => {
+  const fetchCommunity = useCallback(async () => {
     try {
+      console.log('CommunityPage: Загрузка сообщества с ID:', id);
       const res = await fetch(`/api/communities/${id}`, {
         headers: { 'x-user-id': userId || '' },
       });
-      if (!res.ok) throw new Error('Failed to fetch community');
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Не удалось загрузить сообщество');
+      }
       const data = await res.json();
-      console.log('Fetched community:', data);
-      setCommunity(data);
+      setCommunity(data || null);
     } catch (err: any) {
+      console.error('CommunityPage: Ошибка загрузки сообщества:', err);
       setError(err.message);
     }
-  };
+  }, [id, userId]);
 
-  const fetchPosts = async () => {
+  const fetchPosts = useCallback(async () => {
     try {
-      setLoading(true);
+      console.log('CommunityPage: Загрузка постов для сообщества:', id);
       const res = await fetch(`/api/posts?communityId=${id}`, {
         headers: { 'x-user-id': userId || '' },
         cache: 'no-store',
       });
-      if (!res.ok) throw new Error('Failed to fetch posts');
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Не удалось загрузить посты');
+      }
       const data = await res.json();
-      console.log('Fetched posts:', data);
-      setPosts(data);
+      setPosts(data || []);
     } catch (err: any) {
+      console.error('CommunityPage: Ошибка загрузки постов:', err);
       setError(err.message);
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [id, userId]);
+
+  useEffect(() => {
+    if (!userId) {
+      console.log('CommunityPage: Нет userId, ожидание перенаправления');
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    Promise.all([fetchCommunity(), fetchPosts()]).finally(() => setLoading(false));
+  }, [userId, fetchCommunity, fetchPosts]);
 
   const handlePostSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!content) {
-      setError('Content is required');
+      setError('Требуется текст поста');
+      return;
+    }
+    if (!userId) {
+      setError('Пользователь не аутентифицирован');
       return;
     }
     try {
+      let imagePaths: string[] = [];
+      if (images.length > 0) {
+        const formData = new FormData();
+        images.forEach((file) => formData.append('files', file));
+        const uploadRes = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+        if (!uploadRes.ok) {
+          const errorData = await uploadRes.json();
+          throw new Error(errorData.error || 'Не удалось загрузить изображения');
+        }
+        const { files } = await uploadRes.json();
+        imagePaths = files;
+      }
+
+      const postData = {
+        userId,
+        content,
+        images: imagePaths,
+        community: id,
+      };
+
       const res = await fetch('/api/posts', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-id': userId || '',
+          'x-user-id': userId,
         },
-        body: JSON.stringify({ userId, content, communityId: id }),
+        body: JSON.stringify(postData),
       });
-      if (!res.ok) throw new Error((await res.json()).error || 'Failed to create post');
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Не удалось создать пост');
+      }
       setContent('');
-      fetchPosts();
+      setImages([]);
+      await fetchPosts();
     } catch (err: any) {
+      console.error('CommunityPage: Ошибка создания поста:', err);
       setError(err.message);
     }
   };
 
-  const handleInvite = async () => {
-    if (!inviteeId) {
-      alert('Please enter a user ID');
-      return;
-    }
-    try {
-      const res = await fetch(`/api/communities/${id}/invite`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': userId || '',
-        },
-        body: JSON.stringify({ inviteeId }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error);
-      alert('Invite sent!');
-      setInviteeId('');
-      fetchCommunity();
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
-  if (!userId) return <div>Please log in to view this page</div>;
-  if (loading) return <div>Loading...</div>;
-  if (error) return <div>{error}</div>;
-  if (!community) return <div>Community not found</div>;
+  if (loading) return <div>Загрузка...</div>;
+  if (!userId) return null;
+  if (error) return <div>Ошибка: {error}</div>;
 
   return (
     <>
@@ -113,61 +147,62 @@ export default function CommunityPage() {
       <Container className="my-4">
         <Row>
           <Col md={{ span: 8, offset: 2 }}>
-            <Card className="mb-4">
-              <Card.Body>
-                <Card.Title>{community.name}</Card.Title>
-                <Card.Text>{community.description || 'No description yet'}</Card.Text>
-                <Card.Subtitle className="text-muted">
-                  Created by: {community.creator?.username || 'Unknown'} on{' '}
-                  {new Date(community.createdAt).toLocaleDateString()}
-                </Card.Subtitle>
-                <p>Debug: userId={userId}, creatorId={community.creator?._id}</p>
-                {userId === community.creator?._id.toString() && (
-                  <Form className="mt-3">
-                    <Form.Group controlId="inviteeId">
-                      <Form.Label>Invite User (Enter User ID)</Form.Label>
-                      <Form.Control
-                        type="text"
-                        value={inviteeId}
-                        onChange={(e) => setInviteeId(e.target.value)}
-                        placeholder="e.g., 67d14678b41c24eb00f7bfaf"
-                      />
-                    </Form.Group>
-                    <Button variant="primary" onClick={handleInvite} className="mt-2">
-                      Invite
-                    </Button>
-                  </Form>
-                )}
-              </Card.Body>
-            </Card>
+            {community ? (
+              <>
+                <h2>{community.name}</h2>
+                <p>{community.description || 'Описание отсутствует'}</p>
+                <p>Создатель: {community.creator?.username || 'Неизвестный'}</p>
+                <p>Участники: {(community.members || []).map((m) => m.username).join(', ') || 'Нет участников'}</p>
+              </>
+            ) : (
+              <p>Сообщество не найдено</p>
+            )}
             <Form onSubmit={handlePostSubmit} className="mb-4">
-              <Form.Group className="d-flex">
+              <Form.Group className="mb-3">
                 <Form.Control
                   as="textarea"
                   rows={3}
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
-                  placeholder="Write a post..."
+                  placeholder="Напишите пост..."
                 />
-                <Button variant="primary" type="submit" className="ms-2">
-                  Post
-                </Button>
               </Form.Group>
-              {error && <p className="text-danger mt-2">{error}</p>}
+              <Form.Group className="mb-3">
+                <Form.Label>Загрузить изображения</Form.Label>
+                <Form.Control
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => {
+                    const files = (e.target as HTMLInputElement).files;
+                    if (files) setImages(Array.from(files));
+                  }}
+                />
+              </Form.Group>
+              <Button variant="primary" type="submit">
+                Опубликовать
+              </Button>
             </Form>
-            <h3>Posts</h3>
+            <h3>Посты</h3>
             {posts.length === 0 ? (
-              <p>No posts yet</p>
+              <p>Пока нет постов</p>
             ) : (
               posts.map((post) => (
                 <Post
                   key={post._id}
-                  username={post.user?.username || 'Unknown'}
-                  content={post.content || 'No content'}
+                  username={
+                    post.community
+                      ? `${post.user?.username || 'Неизвестный'} в ${post.community.name}`
+                      : post.user?.username || 'Неизвестный'
+                  }
+                  content={post.content || 'Нет содержимого'}
                   createdAt={post.createdAt || Date.now()}
-                  userId={post.user?._id || 'unknown'}
-                  likes={post.likes || []}
-                  postId={post._id}
+                  userId={post.user?._id?.toString() || post.user?.toString() || 'unknown'}
+                  likes={post.likes?.map((id: any) => id.toString()) || []}
+                  images={post.images || []}
+                  postId={post._id.toString()}
+                  fetchPosts={fetchPosts}
+                  userAvatar={post.user?.avatar || '/default-avatar.png'}
                 />
               ))
             )}

@@ -1,23 +1,32 @@
-// app/api/communities/[id]/route.ts
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Community from '@/models/Community';
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   await dbConnect();
+  const params = await context.params; // Асинхронное получение params
   const { id } = params;
 
   try {
+    console.log('GET /api/communities/[id]: Подключение к MongoDB...');
+    await dbConnect();
+    console.log('GET /api/communities/[id]: MongoDB подключен');
+
     const community = await Community.findById(id)
       .populate('creator', 'username')
-      .populate('members', 'username');
+      .populate('members', 'username')
+      .populate('admins', 'username');
+
     if (!community) {
-      return NextResponse.json({ error: 'Community not found' }, { status: 404 });
+      console.log('GET /api/communities/[id]: Сообщество не найдено:', id);
+      return NextResponse.json({ error: 'Сообщество не найдено' }, { status: 404 });
     }
+
+    console.log('GET /api/communities/[id]: Загружено сообщество:', community);
     return NextResponse.json(community);
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('GET community error:', error);
-    return NextResponse.json({ error: 'Failed to fetch community', details: errorMessage }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+    console.error('GET /api/communities/[id] ошибка:', error);
+    return NextResponse.json({ error: 'Не удалось загрузить сообщество', details: errorMessage }, { status: 500 });
   }
 }

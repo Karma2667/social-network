@@ -1,9 +1,5 @@
-'use client';
-
-import React from 'react';
-import 'bootstrap/dist/css/bootstrap.min.css';
-import '@/app/globals.css';
 import { AuthProvider } from '@/lib/AuthContext';
+import 'bootstrap/dist/css/bootstrap.min.css';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
