@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Container, Form, ListGroup, Alert } from 'react-bootstrap';
+import { Container, Row, Col, Form, ListGroup, Alert } from 'react-bootstrap';
 import { useAuth } from '@/lib/AuthContext';
 import AppNavbar from '@/app/Components/Navbar';
+import Link from 'next/link';
 
 interface User {
   _id: string;
@@ -21,7 +22,6 @@ export default function ChatList() {
   useEffect(() => {
     if (!isInitialized || !userId || !search.trim()) {
       console.log('ChatList: Ожидание инициализации, userId или поискового запроса:', { userId, search });
-      setUsers([]);
       return;
     }
 
@@ -54,10 +54,15 @@ export default function ChatList() {
 
   if (!isInitialized) {
     console.log('ChatList: Рендеринг: Ожидание инициализации');
-    return <div>Загрузка...</div>;
+    return (
+      <>
+        <AppNavbar />
+        <div className="d-flex align-items-center justify-content-center vh-100">Загрузка...</div>
+      </>
+    );
   }
 
-  if (!userId) {
+  if (!userId && typeof window !== 'undefined') {
     console.log('ChatList: Рендеринг: Нет userId, перенаправление на /login');
     window.location.replace('/login');
     return null;
@@ -66,46 +71,52 @@ export default function ChatList() {
   return (
     <>
       <AppNavbar />
-      <Container className="my-4">
-        <h2>Поиск чатов</h2>
-        <Form.Group className="mb-3">
-          <Form.Control
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Введите имя пользователя"
-          />
-        </Form.Group>
-        {error && <Alert variant="danger">{error}</Alert>}
-        {loading ? (
-          <div>Загрузка...</div>
-        ) : (
-          <ListGroup>
-            {users.length === 0 && search.trim() ? (
-              <p>Пользователи не найдены</p>
-            ) : users.length === 0 ? (
-              <p>Введите имя для поиска</p>
-            ) : (
-              users.map((user) => (
-                <ListGroup.Item
-                  key={user._id}
-                  action
-                  onClick={() => {
-                    console.log('ChatList: Переход к чату с пользователем:', user._id);
-                    window.location.href = `/chat/${user._id}`;
-                  }}
-                >
-                  <img
-                    src={user.avatar || '/default-avatar.png'}
-                    alt={user.username}
-                    style={{ width: '30px', height: '30px', marginRight: '10px' }}
-                  />
-                  {user.username}
-                </ListGroup.Item>
-              ))
-            )}
-          </ListGroup>
-        )}
+      <Container fluid className="p-0" style={{ height: 'calc(100vh - 56px)' }}>
+        <Row className="h-100 m-0">
+          <Col md={4} className="telegram-sidebar p-0">
+            <div className="p-3 border-bottom">
+              <Form.Control
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Поиск пользователей..."
+                className="telegram-search"
+              />
+            </div>
+            <div className="overflow-auto">
+              {error && <Alert variant="danger" className="m-3">{error}</Alert>}
+              {loading ? (
+                <div className="p-3">Загрузка...</div>
+              ) : users.length === 0 && search.trim() ? (
+                <div className="p-3 text-muted">Пользователи не найдены</div>
+              ) : users.length === 0 ? (
+                <div className="p-3 text-muted">Введите имя для поиска</div>
+              ) : (
+                <ListGroup variant="flush">
+                  {users.map((user) => (
+                    <ListGroup.Item
+                      key={user._id}
+                      action
+                      as={Link}
+                      href={`/chat/${user._id}`}
+                      className="telegram-user-item"
+                    >
+                      <img
+                        src={user.avatar || '/default-avatar.png'}
+                        alt={user.username}
+                        className="telegram-user-avatar"
+                      />
+                      <span className="telegram-user-name">{user.username}</span>
+                    </ListGroup.Item>
+                  ))}
+                </ListGroup>
+              )}
+            </div>
+          </Col>
+          <Col md={8} className="d-none d-md-flex align-items-center justify-content-center telegram-chat">
+            <div className="text-muted">Выберите чат для начала общения</div>
+          </Col>
+        </Row>
       </Container>
     </>
   );

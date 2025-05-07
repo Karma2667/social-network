@@ -10,8 +10,9 @@ export default function AppNavbar() {
   const [notifications, setNotifications] = useState<any[]>([]);
 
   useEffect(() => {
+    if (typeof window === 'undefined' || !isInitialized || !userId) return;
     console.log('Navbar: Текущий userId:', userId, 'isInitialized:', isInitialized);
-    if (!isInitialized || !userId) return;
+
     const fetchNotifications = async () => {
       try {
         console.log('Navbar: Загрузка уведомлений для userId:', userId);
@@ -44,17 +45,32 @@ export default function AppNavbar() {
       console.log('Navbar: Перенаправление на /login');
     } catch (err) {
       console.error('Navbar: Ошибка при выходе:', err);
-      window.location.replace('/login');
+      if (typeof window !== 'undefined') {
+        window.location.replace('/login');
+      }
     }
   };
 
   if (!isInitialized) {
     console.log('Navbar: Рендеринг: Ожидание инициализации AuthContext');
-    return null;
+    return (
+      <Navbar bg="light" variant="light" expand="lg" className="telegram-header px-3">
+        <Navbar.Brand href="/">Snapgramm</Navbar.Brand>
+        <Navbar.Toggle aria-controls="basic-navbar-nav" />
+        <Navbar.Collapse id="basic-navbar-nav">
+          <Nav className="me-auto">
+            <Nav.Link href="/">Главная</Nav.Link>
+            <Nav.Link href="/communities">Сообщества</Nav.Link>
+            <Nav.Link href="/chat">Чат</Nav.Link>
+            <Nav.Link href="/login">Войти</Nav.Link>
+          </Nav>
+        </Navbar.Collapse>
+      </Navbar>
+    );
   }
 
   return (
-    <Navbar bg="dark" variant="dark" expand="lg">
+    <Navbar bg="light" variant="light" expand="lg" className="telegram-header px-3">
       <Navbar.Brand href="/">Snapgramm</Navbar.Brand>
       <Navbar.Toggle aria-controls="basic-navbar-nav" />
       <Navbar.Collapse id="basic-navbar-nav">
@@ -66,7 +82,7 @@ export default function AppNavbar() {
             <>
               <Nav.Link href="/profile">Профиль</Nav.Link>
               <Dropdown>
-                <Dropdown.Toggle variant="outline-light" id="dropdown-notifications">
+                <Dropdown.Toggle variant="outline-primary" id="dropdown-notifications">
                   Уведомления ({notifications.filter((n) => !n.read).length})
                 </Dropdown.Toggle>
                 <Dropdown.Menu align="end" style={{ maxHeight: '400px', overflowY: 'auto' }}>
@@ -80,7 +96,7 @@ export default function AppNavbar() {
                 </Dropdown.Menu>
               </Dropdown>
               <Button
-                variant="outline-light"
+                variant="outline-primary"
                 onClick={() => {
                   console.log('Navbar: Событие onClick для кнопки Выйти');
                   handleLogout();

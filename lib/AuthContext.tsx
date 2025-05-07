@@ -6,14 +6,14 @@ interface AuthContextType {
   userId: string | null;
   isInitialized: boolean;
   logout: () => void;
-  setUserId: (userId: string | null) => void;
+  login: (userId: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
   userId: null,
   isInitialized: false,
   logout: () => {},
-  setUserId: () => {},
+  login: () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -21,40 +21,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
-    console.log('AuthProvider: Ожидание инициализации...');
-    const storedUserId = localStorage.getItem('userId');
-    if (storedUserId) {
-      console.log('AuthProvider: Загружен userId из localStorage:', storedUserId);
-      setUserId(storedUserId);
-    } else {
-      console.log('AuthProvider: Нет userId в localStorage');
+    if (typeof window === 'undefined') {
+      setIsInitialized(true);
+      return;
     }
-    setIsInitialized(true);
-    console.log('AuthProvider: Инициализация завершена, isInitialized:', true);
-  }, []);
 
-  // Слушаем изменения localStorage
-  useEffect(() => {
-    const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === 'userId') {
-        const newUserId = event.newValue;
-        console.log('AuthProvider: Обнаружено изменение userId в localStorage:', newUserId);
-        setUserId(newUserId);
-      }
-    };
+    const storedUserId = localStorage.getItem('userId');
+    if (storedUserId !== userId) {
+      setUserId(storedUserId);
+    }
+    if (!isInitialized) {
+      setIsInitialized(true);
+    }
+  }, []); // Пустой массив зависимостей
 
-    window.addEventListener('storage', handleStorageChange);
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, []);
+  const login = (userId: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem('userId', userId);
+      setUserId(userId);
+    } catch (err) {
+      console.error('AuthProvider: Ошибка при входе:', err);
+    }
+  };
 
   const logout = () => {
-    console.log('AuthProvider: Выход из системы');
+    if (typeof window === 'undefined') return;
     try {
       localStorage.removeItem('userId');
       setUserId(null);
-      console.log('AuthProvider: localStorage очищен, перенаправление на /login');
       window.location.replace('/login');
     } catch (err) {
       console.error('AuthProvider: Ошибка при выходе:', err);
@@ -63,7 +58,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ userId, isInitialized, logout, setUserId }}>
+    <AuthContext.Provider value={{ userId, isInitialized, logout, login }}>
       {children}
     </AuthContext.Provider>
   );

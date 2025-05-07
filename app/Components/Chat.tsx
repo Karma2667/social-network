@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Container, Form, Button, ListGroup, Alert } from 'react-bootstrap';
+import { useState, useEffect, useRef } from 'react';
+import { Form, Button } from 'react-bootstrap';
 import { useAuth } from '@/lib/AuthContext';
-import { useParams } from 'next/navigation';
 
 interface Message {
   _id: string;
@@ -13,21 +12,18 @@ interface Message {
   createdAt: string;
 }
 
-interface Recipient {
-  _id: string;
-  username: string;
-  avatar: string;
+interface ChatProps {
+  recipientId: string;
+  recipientUsername: string;
 }
 
-export default function Chat() {
+export default function Chat({ recipientId, recipientUsername }: ChatProps) {
   const { userId, isInitialized } = useAuth();
-  const params = useParams();
-  const recipientId = params.id as string;
-  const [recipient, setRecipient] = useState<Recipient | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isInitialized || !userId || !recipientId) {
@@ -35,39 +31,16 @@ export default function Chat() {
       return;
     }
 
-    const fetchRecipient = async () => {
-      try {
-        console.log('Chat: Получение пользователя с ID:', recipientId);
-        const res = await fetch('/api/users/profile', {
-          headers: { 'x-user-id': recipientId },
-        });
-        if (!res.ok) {
-          const errorData = await res.json();
-          console.error('Chat: Ошибка API при загрузке пользователя:', errorData);
-          throw new Error(errorData.error || 'Не удалось загрузить пользователя');
-        }
-        const data = await res.json();
-        console.log('Chat: Пользователь загружен:', data);
-        setRecipient(data);
-      } catch (err: any) {
-        console.error('Chat: Ошибка загрузки пользователя:', err.message);
-        setError(err.message);
-        setLoading(false);
-      }
-    };
-
     const fetchMessages = async () => {
       try {
-        console.log('Chat: Загрузка сообщений для:', { userId, recipientId });
-        const res = await fetch('/api/messages', {
-          headers: {
-            'x-user-id': userId,
-            'x-recipient-id': recipientId,
-          },
+        setLoading(true);
+        console.log('Chat: Загрузка сообщений для userId:', userId, 'recipientId:', recipientId);
+        const res = await fetch(`/api/messages?recipientId=${recipientId}`, {
+          headers: { 'x-user-id': userId },
         });
         if (!res.ok) {
           const errorData = await res.json();
-          console.error('Chat: Ошибка API при загрузке сообщений:', errorData);
+          console.error('Chat: Ошибка API:', errorData);
           throw new Error(errorData.error || 'Не удалось загрузить сообщения');
         }
         const data = await res.json();
@@ -81,37 +54,43 @@ export default function Chat() {
       }
     };
 
-    fetchRecipient();
     fetchMessages();
   }, [isInitialized, userId, recipientId]);
 
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userId || !recipientId || !newMessage.trim()) {
-      console.error('Chat: Отсутствуют userId, recipientId или сообщение');
-      setError('Введите сообщение');
+    if (!newMessage.trim()) {
+      console.error('Chat: Пустое сообщение');
+      setError('Сообщение не может быть пустым');
       return;
     }
 
     try {
-      console.log('Chat: Отправка сообщения:', { userId, recipientId, content: newMessage });
+      console.log('Chat: Отправка сообщения:', { content: newMessage, recipientId });
       const res = await fetch('/api/messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-id': userId,
+          'x-user-id': userId!,
         },
         body: JSON.stringify({ recipientId, content: newMessage }),
       });
+
       if (!res.ok) {
         const errorData = await res.json();
-        console.error('Chat: Ошибка API при отправке сообщения:', errorData);
+        console.error('Chat: Ошибка API:', errorData);
         throw new Error(errorData.error || 'Не удалось отправить сообщение');
       }
-      const message = await res.json();
-      console.log('Chat: Сообщение отправлено:', message);
-      setMessages([...messages, message]);
+
+      const data = await res.json();
+      console.log('Chat: Сообщение отправлено:', data);
+      setMessages([...messages, data]);
       setNewMessage('');
+      setError(null);
     } catch (err: any) {
       console.error('Chat: Ошибка отправки сообщения:', err.message);
       setError(err.message);
@@ -120,48 +99,54 @@ export default function Chat() {
 
   if (!isInitialized || loading) {
     console.log('Chat: Рендеринг: Ожидание инициализации или загрузки');
-    return <div>Загрузка...</div>;
+    return <div className="d-flex align-items-center justify-content-center h-100">Загрузка...</div>;
   }
 
-  if (!userId || !recipientId) {
-    console.log('Chat: Рендеринг: Нет userId или recipientId');
-    setError('Не указан получатель или пользователь');
-    return <Alert variant="danger">Не указан получатель или пользователь</Alert>;
+  if (!userId) {
+    console.log('Chat: Рендеринг: Нет userId, перенаправление на /login');
+    window.location.replace('/login');
+    return null;
   }
 
   return (
-    <Container className="my-4">
-      <h2>Чат с {recipient?.username || 'пользователем'}</h2>
-      {error && <Alert variant="danger">{error}</Alert>}
-      <ListGroup className="mb-3">
-        {messages.length === 0 ? (
-          <p>Нет сообщений</p>
-        ) : (
-          messages.map((msg) => (
-            <ListGroup.Item
-              key={msg._id}
-              className={msg.senderId === userId ? 'text-end' : 'text-start'}
-            >
-              <strong>{msg.senderId === userId ? 'Вы' : recipient?.username}:</strong> {msg.content}
-              <br />
-              <small>{new Date(msg.createdAt).toLocaleString()}</small>
-            </ListGroup.Item>
-          ))
-        )}
-      </ListGroup>
-      <Form onSubmit={handleSendMessage}>
-        <Form.Group className="mb-3">
+    <div className="telegram-chat active d-flex flex-column h-100">
+      <div className="telegram-message-container">
+        {error && <div className="alert alert-danger m-3">{error}</div>}
+        {messages.map((msg) => (
+          <div
+            key={msg._id}
+            className={`telegram-message ${msg.senderId === userId ? 'sent' : 'received'}`}
+          >
+            <div>{msg.content}</div>
+            <div className="telegram-message-time">
+              {new Date(msg.createdAt).toLocaleTimeString()}
+            </div>
+          </div>
+        ))}
+        <div ref={messagesEndRef} />
+      </div>
+      <Form onSubmit={handleSendMessage} className="p-3 border-top">
+        <div className="d-flex align-items-center">
           <Form.Control
             type="text"
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Введите сообщение"
+            placeholder={`Сообщение ${recipientUsername}...`}
+            className="telegram-message-input me-2"
           />
-        </Form.Group>
-        <Button variant="primary" type="submit">
-          Отправить
-        </Button>
+          <Button type="submit" className="telegram-send-button">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              fill="white"
+              viewBox="0 0 24 24"
+            >
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+            </svg>
+          </Button>
+        </div>
       </Form>
-    </Container>
+    </div>
   );
 }

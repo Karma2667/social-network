@@ -1,45 +1,156 @@
+/* Telegram-like styles */
 body {
-  background-color: #f8f9fa;
-  font-family: 'Arial', sans-serif;
+  background-color: #E5E9F0;
+  margin: 0;
 }
 
-h1, h2 {
-  color: #343a40;
+.telegram-header {
+  background-color: #FFFFFF;
+  border-bottom: 1px solid #DEE2E6;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  width: 100%;
 }
 
-.profile-card {
-  border: none;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+.telegram-sidebar {
+  background-color: #FFFFFF;
+  border-right: 1px solid #DEE2E6;
+  height: 100%;
+  overflow-y: auto;
 }
 
-.profile-avatar {
-  border: 2px solid #fff;
-}
-
-.btn-edit {
+.telegram-search {
   border-radius: 20px;
-  padding: 5px 15px;
+  border: 1px solid #CED4DA;
+  padding: 8px 15px;
+  width: 100%;
 }
-.notification-item {
-  max-width: 250px; /* Уменьшаем ширину для большей компактности */
-  white-space: nowrap;
+
+.telegram-search:focus {
+  border-color: #0088CC;
+  box-shadow: 0 0 0 2px rgba(0, 136, 204, 0.2);
+}
+
+.list-group-item.telegram-user-item {
+  display: flex !important;
+  align-items: center !important;
+  padding: 10px 15px !important;
+  transition: background-color 0.2s;
+}
+
+.telegram-user-item:hover {
+  background-color: #F8F9FA;
+}
+
+.telegram-user-item .telegram-user-avatar {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 50% !important;
+  margin-right: 10px !important;
+  object-fit: cover !important;
+  object-position: center !important;
+}
+
+.telegram-user-item .telegram-user-name {
+  font-weight: 600;
+  font-size: 16px;
+  color: #000;
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: block; /* Убеждаемся, что элемент блочный */
-}
-
-.notifications-dropdown {
-  max-width: 300px; /* Ограничиваем ширину всего меню */
-  word-wrap: break-word; /* На случай, если текст всё же переносится */
-}
-
-/* Переопределяем стили Bootstrap, если они мешают */
-.dropdown-menu {
-  max-width: 300px !important; /* Принудительно ограничиваем меню */
-}
-
-.dropdown-item {
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+.telegram-chat {
+  background-color: #F5F7FA;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.telegram-chat-header {
+  background-color: #FFFFFF;
+  border-bottom: 1px solid #DEE2E6;
+  padding: 10px 15px;
+  display: flex;
+  align-items: center;
+}
+
+.telegram-chat-header img {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 50% !important;
+  margin-right: 10px !important;
+  object-fit: cover !important;
+  object-position: center !important;
+}
+
+.telegram-message-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 15px;
+}
+
+.telegram-message {
+  max-width: 70%;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border-radius: 15px;
+  font-size: 14px;
+}
+
+.telegram-message.sent {
+  background-color: #E1F5FE;
+  margin-left: auto;
+}
+
+.telegram-message.received {
+  background-color: #FFFFFF;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.telegram-message-time {
+  font-size: 12px;
+  color: #6C757D;
+  margin-top: 4px;
+}
+
+.telegram-message-input {
+  border-radius: 20px;
+  border: 1px solid #CED4DA;
+  padding: 8px 15px;
+}
+
+.telegram-message-input:focus {
+  border-color: #0088CC;
+  box-shadow: 0 0 0 2px rgba(0, 136, 204, 0.2);
+}
+
+.telegram-send-button {
+  background-color: #0088CC;
+  border: none;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.telegram-send-button:hover {
+  background-color: #006699;
+}
+
+/* Responsive styles */
+@media (max-width: 767px) {
+  .telegram-sidebar {
+    display: block;
+  }
+  .telegram-chat {
+    display: none;
+  }
+  .telegram-chat.active {
+    display: flex;
+  }
 }
