@@ -1,18 +1,23 @@
 import './globals.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
-import { AuthProvider } from '@/lib/AuthContext';
+import ClientAuthProvider from './ClientAuthProvider';
+import { Container } from 'react-bootstrap';
 
 export const metadata = {
-  title: 'Snapgramm',
-  description: 'A social network platform',
+  title: 'Social Network',
+  description: 'A Telegram-like social network',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body>
-        <AuthProvider>{children}</AuthProvider>
-      </body>
-    </html>
+    <ClientAuthProvider>
+      <html lang="en" suppressHydrationWarning>
+        <body>
+          <Container fluid className="p-0">
+            {children}
+          </Container>
+        </body>
+      </html>
+    </ClientAuthProvider>
   );
 }

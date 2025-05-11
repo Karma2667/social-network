@@ -1,116 +1,107 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Navbar, Nav, Button, Dropdown } from 'react-bootstrap';
+import { Navbar, Nav, Button, Badge, Container } from 'react-bootstrap';
 import { useAuth } from '@/lib/AuthContext';
-import NotificationItem from '@/app/Components/NotificationItem';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+
+interface Notification {
+  _id: string;
+  type: string;
+  content: string;
+  createdAt: string;
+}
 
 export default function AppNavbar() {
   const { userId, isInitialized, logout } = useAuth();
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const router = useRouter();
+
+  // Функция для повторных попыток запроса
+  const fetchWithRetry = async (url: string, options: RequestInit, retries: number = 3, delay: number = 1000): Promise<Response> => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const res = await fetch(url, options);
+        return res;
+      } catch (err) {
+        if (i < retries - 1) {
+          console.log(`Navbar: Повторная попытка (${i + 1}/${retries}) для ${url}`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          throw err;
+        }
+      }
+    }
+    throw new Error('Не удалось выполнить запрос');
+  };
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !isInitialized || !userId) return;
+    if (!isInitialized) {
+      console.log('Navbar: Рендеринг: Ожидание инициализации AuthContext');
+      return;
+    }
+
+    if (!userId) {
+      console.log('Navbar: Нет userId, перенаправление на /login');
+      router.replace('/login');
+      return;
+    }
+
     console.log('Navbar: Текущий userId:', userId, 'isInitialized:', isInitialized);
 
     const fetchNotifications = async () => {
       try {
         console.log('Navbar: Загрузка уведомлений для userId:', userId);
-        const res = await fetch('/api/notifications', {
+        const res = await fetchWithRetry(`/api/notifications?userId=${userId}`, {
           headers: { 'x-user-id': userId },
         });
-        if (res.ok) {
-          const data = await res.json();
-          setNotifications(data);
-        } else {
-          console.error('Navbar: Ошибка загрузки уведомлений:', res.status);
+        console.log('Navbar: Ответ сервера для /api/notifications:', res.status, res.statusText);
+        if (!res.ok) {
+          const errorData = await res.json();
+          console.error('Navbar: Ошибка API уведомлений:', errorData);
+          throw new Error(errorData.error || 'Не удалось загрузить уведомления');
         }
-      } catch (err) {
-        console.error('Navbar: Ошибка загрузки уведомлений:', err);
+        const data = await res.json();
+        console.log('Navbar: Уведомления загружены:', data);
+        setNotifications(data);
+      } catch (err: any) {
+        console.error('Navbar: Ошибка загрузки уведомлений:', err.message);
+        setNotifications([]);
       }
     };
-    fetchNotifications();
-  }, [userId, isInitialized]);
 
-  const handleLogout = () => {
-    console.log('Navbar: handleLogout вызван, userId:', userId);
-    try {
-      console.log('Navbar: Вызов logout из AuthContext');
-      logout();
-      console.log('Navbar: Проверка localStorage после logout');
-      if (localStorage.getItem('userId')) {
-        console.warn('Navbar: localStorage не очищен, принудительная очистка');
-        localStorage.removeItem('userId');
-      }
-      console.log('Navbar: Перенаправление на /login');
-    } catch (err) {
-      console.error('Navbar: Ошибка при выходе:', err);
-      if (typeof window !== 'undefined') {
-        window.location.replace('/login');
-      }
-    }
-  };
+    fetchNotifications();
+  }, [userId, isInitialized, router]);
 
   if (!isInitialized) {
-    console.log('Navbar: Рендеринг: Ожидание инициализации AuthContext');
-    return (
-      <Navbar bg="light" variant="light" expand="lg" className="telegram-header px-3">
-        <Navbar.Brand href="/">Snapgramm</Navbar.Brand>
-        <Navbar.Toggle aria-controls="basic-navbar-nav" />
-        <Navbar.Collapse id="basic-navbar-nav">
-          <Nav className="me-auto">
-            <Nav.Link href="/">Главная</Nav.Link>
-            <Nav.Link href="/communities">Сообщества</Nav.Link>
-            <Nav.Link href="/chat">Чат</Nav.Link>
-            <Nav.Link href="/login">Войти</Nav.Link>
-          </Nav>
-        </Navbar.Collapse>
-      </Navbar>
-    );
+    return null;
   }
 
   return (
-    <Navbar bg="light" variant="light" expand="lg" className="telegram-header px-3">
-      <Navbar.Brand href="/">Snapgramm</Navbar.Brand>
-      <Navbar.Toggle aria-controls="basic-navbar-nav" />
-      <Navbar.Collapse id="basic-navbar-nav">
-        <Nav className="me-auto">
-          <Nav.Link href="/">Главная</Nav.Link>
-          <Nav.Link href="/communities">Сообщества</Nav.Link>
-          <Nav.Link href="/chat">Чат</Nav.Link>
-          {userId ? (
-            <>
-              <Nav.Link href="/profile">Профиль</Nav.Link>
-              <Dropdown>
-                <Dropdown.Toggle variant="outline-primary" id="dropdown-notifications">
-                  Уведомления ({notifications.filter((n) => !n.read).length})
-                </Dropdown.Toggle>
-                <Dropdown.Menu align="end" style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                  {notifications.length === 0 ? (
-                    <Dropdown.Item disabled>Нет уведомлений</Dropdown.Item>
-                  ) : (
-                    notifications.map((notif) => (
-                      <NotificationItem key={notif._id} notif={notif} />
-                    ))
-                  )}
-                </Dropdown.Menu>
-              </Dropdown>
-              <Button
-                variant="outline-primary"
-                onClick={() => {
-                  console.log('Navbar: Событие onClick для кнопки Выйти');
-                  handleLogout();
-                }}
-                className="ms-2"
-              >
-                Выйти
-              </Button>
-            </>
-          ) : (
-            <Nav.Link href="/login">Войти</Nav.Link>
-          )}
-        </Nav>
-      </Navbar.Collapse>
+    <Navbar bg="light" expand="lg" className="telegram-header">
+      <Container fluid>
+        <Navbar.Brand as={Link} href="/">
+          Social Network
+        </Navbar.Brand>
+        <Navbar.Toggle aria-controls="navbar-nav" />
+        <Navbar.Collapse id="navbar-nav">
+          <Nav className="ms-auto">
+            <Nav.Link as={Link} href="/chat">
+              Чаты{' '}
+              {notifications.length > 0 && (
+                <Badge bg="danger">{notifications.length}</Badge>
+              )}
+            </Nav.Link>
+            <Nav.Link as={Link} href="/profile/edit">
+              Профиль
+            </Nav.Link>
+            <Button variant="outline-danger" onClick={logout}>
+              Выйти
+            </Button>
+          </Nav>
+        </Navbar.Collapse>
+      </Container>
     </Navbar>
   );
 }

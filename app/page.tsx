@@ -1,200 +1,231 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Container, Row, Col, Form, Button } from 'react-bootstrap';
-import Post from '@/app/Components/Post';
-import AppNavbar from '@/app/Components/Navbar';
+import { useState, useEffect } from 'react';
+import { Container, Row, Col, Form, Button, Image, ListGroup, Alert } from 'react-bootstrap';
 import { useAuth } from '@/lib/AuthContext';
+import AppNavbar from '@/app/Components/Navbar';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
-interface PostData {
+interface Post {
   _id: string;
+  userId: string;
+  username: string;
+  avatar: string;
   content: string;
-  user: { _id: string; username: string; avatar?: string };
-  community?: { _id: string; name: string };
   createdAt: string;
-  likes: string[];
-  images: string[];
+}
+
+interface UserProfile {
+  _id: string;
+  username: string;
+  email: string;
+  avatar: string;
 }
 
 export default function Home() {
-  const { userId, isInitialized, setUserId } = useAuth();
-  const [posts, setPosts] = useState<PostData[]>([]);
-  const [content, setContent] = useState('');
-  const [images, setImages] = useState<File[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { userId, isInitialized, logout } = useAuth();
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [postInput, setPostInput] = useState('');
+  const [posting, setPosting] = useState(false);
+  const router = useRouter();
 
-  const fetchPosts = useCallback(async () => {
-    if (!userId) return;
-    try {
-      console.log('Home: Fetching posts with userId:', userId);
-      const res = await fetch('/api/posts', {
-        headers: { 'x-user-id': userId },
-        cache: 'no-store',
-      });
-      if (!res.ok) {
-        const errorData = await res.json();
-        console.error('Home: Ошибка API:', errorData);
-        throw new Error(errorData.details || errorData.error || 'Не удалось загрузить посты');
-      }
-      const data = await res.json();
-      console.log('Home: Fetched posts:', data);
-      setPosts(data || []);
-      setError(null);
-    } catch (err: any) {
-      console.error('Home: Ошибка загрузки постов:', err.message);
-      setError(err.message);
-    }
-  }, [userId]);
-
+  // Перенаправление на /login, если нет userId
   useEffect(() => {
-    console.log('Home: userId from useAuth:', userId, 'isInitialized:', isInitialized);
-    if (!isInitialized) {
-      console.log('Home: Ожидание инициализации AuthContext');
-      return;
-    }
-    const storedUserId = localStorage.getItem('userId');
-    if (!userId && storedUserId) {
-      console.log('Home: userId отсутствует, но найден в localStorage:', storedUserId);
-      setUserId(storedUserId);
-      return;
-    }
-    if (!userId && !storedUserId) {
+    if (isInitialized && !userId) {
       console.log('Home: Нет userId, перенаправление на /login');
-      window.location.replace('/login');
-      return;
+      router.replace('/login');
     }
-    if (userId) {
-      setLoading(true);
-      fetchPosts().finally(() => setLoading(false));
-    }
-  }, [userId, isInitialized, fetchPosts, setUserId]);
+  }, [isInitialized, userId, router]);
 
-  const handlePostSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!content) {
-      console.error('Home: Требуется текст поста');
-      setError('Требуется текст поста');
+  // Загрузка профиля и постов
+  useEffect(() => {
+    if (!isInitialized || !userId) {
+      console.log('Home: Ожидание инициализации или userId:', { userId });
       return;
     }
-    if (!userId) {
-      console.error('Home: Пользователь не аутентифицирован');
-      setError('Пользователь не аутентифицирован');
-      return;
-    }
-    try {
-      let imagePaths: string[] = [];
-      if (images.length > 0) {
-        const formData = new FormData();
-        images.forEach((file) => formData.append('files', file));
-        const uploadRes = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
+
+    const fetchProfile = async () => {
+      try {
+        console.log('Home: Загрузка профиля для userId:', userId);
+        const res = await fetch(`/api/users/${userId}`, {
+          headers: { 'x-user-id': userId },
         });
-        if (!uploadRes.ok) {
-          const errorData = await uploadRes.json();
-          throw new Error(errorData.error || 'Не удалось загрузить изображения');
+        if (!res.ok) {
+          const errorData = await res.json();
+          console.error('Home: Ошибка API профиля:', errorData);
+          throw new Error(errorData.error || 'Не удалось загрузить профиль');
         }
-        const { files } = await uploadRes.json();
-        imagePaths = files;
+        const data = await res.json();
+        console.log('Home: Профиль загружен:', data);
+        setProfile(data);
+      } catch (err: any) {
+        console.error('Home: Ошибка загрузки профиля:', err.message);
+        setError(err.message);
       }
+    };
 
-      const postData = {
-        userId,
-        content,
-        images: imagePaths,
-      };
+    const fetchPosts = async () => {
+      try {
+        setLoading(true);
+        console.log('Home: Загрузка постов для userId:', userId);
+        const res = await fetch(`/api/posts?userId=${userId}`, {
+          headers: { 'x-user-id': userId },
+        });
+        if (!res.ok) {
+          const errorData = await res.json();
+          console.error('Home: Ошибка API постов:', errorData);
+          throw new Error(errorData.error || 'Не удалось загрузить посты');
+        }
+        const data = await res.json();
+        console.log('Home: Посты загружены:', data);
+        setPosts(data);
+        setLoading(false);
+      } catch (err: any) {
+        console.error('Home: Ошибка загрузки постов:', err.message);
+        setError(err.message);
+        setLoading(false);
+      }
+    };
 
+    fetchProfile();
+    fetchPosts();
+  }, [isInitialized, userId]);
+
+  // Создание поста
+  const handleCreatePost = async () => {
+    if (!postInput.trim() || !userId) return;
+
+    try {
+      setPosting(true);
+      console.log('Home: Создание поста для userId:', userId);
       const res = await fetch('/api/posts', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': userId,
-        },
-        body: JSON.stringify(postData),
+        headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+        body: JSON.stringify({ content: postInput, userId }),
       });
       if (!res.ok) {
         const errorData = await res.json();
+        console.error('Home: Ошибка API создания поста:', errorData);
         throw new Error(errorData.error || 'Не удалось создать пост');
       }
-      setContent('');
-      setImages([]);
-      setError(null);
-      await fetchPosts();
+      const newPost = await res.json();
+      console.log('Home: Пост создан:', newPost);
+      setPosts((prev) => [newPost, ...prev]);
+      setPostInput('');
+      setPosting(false);
     } catch (err: any) {
       console.error('Home: Ошибка создания поста:', err.message);
       setError(err.message);
+      setPosting(false);
     }
   };
 
   if (!isInitialized) {
-    console.log('Home: Рендеринг: Ожидание инициализации AuthContext');
-    return <div>Загрузка...</div>;
+    console.log('Home: Рендеринг: Ожидание инициализации');
+    return (
+      <>
+        <AppNavbar />
+        <div className="d-flex align-items-center justify-content-center vh-100">Загрузка...</div>
+      </>
+    );
   }
-  if (!userId && !localStorage.getItem('userId')) {
-    console.log('Home: Рендеринг: Нет userId, перенаправление на /login');
-    window.location.replace('/login');
-    return null;
-  }
-
-  if (loading) return <div>Загрузка...</div>;
 
   return (
     <>
       <AppNavbar />
-      <Container className="my-4">
-        <Row>
-          <Col md={{ span: 8, offset: 2 }}>
-            {error && <div className="alert alert-danger">{error}</div>}
-            <Form onSubmit={handlePostSubmit} className="mb-4">
-              <Form.Group className="mb-3">
-                <Form.Control
-                  as="textarea"
-                  rows={3}
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="Напишите пост..."
-                />
-              </Form.Group>
-              <Form.Group className="mb-3">
-                <Form.Label>Загрузить изображения</Form.Label>
-                <Form.Control
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={(e) => {
-                    const files = (e.target as HTMLInputElement).files;
-                    if (files) setImages(Array.from(files));
-                  }}
-                />
-              </Form.Group>
-              <Button variant="primary" type="submit">
+      <Container fluid className="p-0" style={{ height: 'calc(100vh - 56px)' }}>
+        <Row className="h-100 m-0">
+          <Col md={4} className="telegram-sidebar p-0">
+            <div className="p-3 border-bottom">
+              <h5 className="telegram-profile-title">Профиль</h5>
+            </div>
+            <div className="p-3">
+              {error && <Alert variant="danger">{error}</Alert>}
+              {profile ? (
+                <div className="telegram-profile">
+                  <Image
+                    src={profile.avatar || '/default-avatar.png'}
+                    alt={profile.username}
+                    className="telegram-profile-avatar"
+                    roundedCircle
+                  />
+                  <div className="telegram-profile-info">
+                    <div className="fw-bold">{profile.username}</div>
+                    <div className="text-muted">{profile.email}</div>
+                  </div>
+                  <Link href="/profile/edit" passHref>
+                    <Button variant="outline-primary" className="telegram-profile-button">
+                      Редактировать профиль
+                    </Button>
+                  </Link>
+                  <Button
+                    variant="outline-danger"
+                    className="telegram-profile-button"
+                    onClick={logout}
+                  >
+                    Выйти
+                  </Button>
+                </div>
+              ) : (
+                <div className="text-muted">Загрузка профиля...</div>
+              )}
+            </div>
+          </Col>
+          <Col md={8} className="telegram-posts d-flex flex-column">
+            <div className="p-3 border-bottom">
+              <h5>Ваши посты</h5>
+            </div>
+            <div className="p-3 border-bottom">
+              <Form.Control
+                as="textarea"
+                rows={3}
+                value={postInput}
+                onChange={(e) => setPostInput(e.target.value)}
+                placeholder="Напишите пост..."
+                className="telegram-post-input mb-2"
+                disabled={posting}
+              />
+              <Button
+                className="telegram-post-button"
+                onClick={handleCreatePost}
+                disabled={posting || !postInput.trim()}
+              >
                 Опубликовать
               </Button>
-            </Form>
-            <h3>Посты</h3>
-            {posts.length === 0 ? (
-              <p>Пока нет постов</p>
-            ) : (
-              posts.map((post) => (
-                <Post
-                  key={post._id}
-                  username={
-                    post.community
-                      ? `${post.user?.username || 'Неизвестный'} в ${post.community.name}`
-                      : post.user?.username || 'Неизвестный'
-                  }
-                  content={post.content || 'Нет содержимого'}
-                  createdAt={post.createdAt || Date.now()}
-                  userId={post.user?._id?.toString() || post.user?.toString() || 'unknown'}
-                  likes={post.likes?.map((id: any) => id.toString()) || []}
-                  images={post.images || []}
-                  postId={post._id.toString()}
-                  fetchPosts={fetchPosts}
-                  userAvatar={post.user?.avatar || '/default-avatar.png'}
-                />
-              ))
-            )}
+            </div>
+            <div className="overflow-auto p-3 flex-grow-1">
+              {loading ? (
+                <div>Загрузка...</div>
+              ) : posts.length === 0 ? (
+                <div className="text-muted">У вас нет постов</div>
+              ) : (
+                <ListGroup variant="flush">
+                  {posts.map((post) => (
+                    <ListGroup.Item key={post._id} className="telegram-post-item">
+                      <div className="d-flex align-items-center">
+                        <Image
+                          src={post.avatar || '/default-avatar.png'}
+                          alt={post.username}
+                          className="telegram-post-avatar"
+                          roundedCircle
+                        />
+                        <div>
+                          <div className="fw-bold">{post.username}</div>
+                          <div className="text-muted small">
+                            {new Date(post.createdAt).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-2">{post.content}</div>
+                    </ListGroup.Item>
+                  ))}
+                </ListGroup>
+              )}
+            </div>
           </Col>
         </Row>
       </Container>

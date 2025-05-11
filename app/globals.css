@@ -43,6 +43,10 @@ body {
   background-color: #F8F9FA;
 }
 
+.telegram-user-item.active {
+  background-color: #E1F5FE;
+}
+
 .telegram-user-item .telegram-user-avatar {
   width: 40px !important;
   height: 40px !important;
@@ -142,15 +146,88 @@ body {
   background-color: #006699;
 }
 
+.telegram-posts {
+  background-color: #F5F7FA;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.telegram-post-item {
+  background-color: #FFFFFF;
+  padding: 15px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.telegram-post-avatar {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 50% !important;
+  margin-right: 10px !important;
+  object-fit: cover !important;
+  object-position: center !important;
+}
+
+.telegram-post-input {
+  border-radius: 10px;
+  border: 1px solid #CED4DA;
+  padding: 8px 15px;
+}
+
+.telegram-post-input:focus {
+  border-color: #0088CC;
+  box-shadow: 0 0 0 2px rgba(0, 136, 204, 0.2);
+}
+
+.telegram-post-button {
+  background-color: #0088CC;
+  border: none;
+  border-radius: 20px;
+  padding: 8px 15px;
+}
+
+.telegram-post-button:hover {
+  background-color: #006699;
+}
+
+.telegram-profile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.telegram-profile-avatar {
+  width: 80px !important;
+  height: 80px !important;
+  border-radius: 50% !important;
+  margin-bottom: 10px !important;
+  object-fit: cover !important;
+  object-position: center !important;
+}
+
+.telegram-profile-info {
+  margin-bottom: 15px;
+}
+
+.telegram-profile-button {
+  width: 100%;
+  margin-bottom: 10px;
+}
+
 /* Responsive styles */
 @media (max-width: 767px) {
   .telegram-sidebar {
     display: block;
   }
-  .telegram-chat {
+  .telegram-chat,
+  .telegram-posts {
     display: none;
   }
-  .telegram-chat.active {
+  .telegram-chat.active,
+  .telegram-posts.active {
     display: flex;
   }
 }

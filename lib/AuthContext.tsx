@@ -33,7 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!isInitialized) {
       setIsInitialized(true);
     }
-  }, []); // Пустой массив зависимостей
+  }, [userId, isInitialized]); // Добавлены зависимости
 
   const login = (userId: string) => {
     if (typeof window === 'undefined') return;
