@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { createContext, useContext, useState, useEffect } from 'react';
 
@@ -21,25 +21,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
+    console.log('AuthProvider: Начало инициализации');
     if (typeof window === 'undefined') {
       setIsInitialized(true);
       return;
     }
 
-    const storedUserId = localStorage.getItem('userId');
-    if (storedUserId !== userId) {
-      setUserId(storedUserId);
-    }
-    if (!isInitialized) {
-      setIsInitialized(true);
-    }
-  }, [userId, isInitialized]); // Добавлены зависимости
+    const storedUserId = localStorage.getItem('userId') || '67d2a7a473abc791ba0f20b8'; // Хардкод для теста
+    setUserId(storedUserId);
+    setIsInitialized(true);
+    console.log('AuthProvider: Инициализация завершена, userId:', storedUserId);
+  }, []); // Убраны зависимости
 
   const login = (userId: string) => {
     if (typeof window === 'undefined') return;
     try {
       localStorage.setItem('userId', userId);
       setUserId(userId);
+      console.log('AuthProvider: Вход выполнен, userId:', userId);
     } catch (err) {
       console.error('AuthProvider: Ошибка при входе:', err);
     }
@@ -50,6 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       localStorage.removeItem('userId');
       setUserId(null);
+      console.log('AuthProvider: Выход выполнен');
       window.location.replace('/login');
     } catch (err) {
       console.error('AuthProvider: Ошибка при выходе:', err);

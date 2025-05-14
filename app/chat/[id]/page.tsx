@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { useState, useEffect } from 'react';
 import { Container, Row, Col, Button } from 'react-bootstrap';
@@ -33,6 +33,7 @@ export default function ChatPage() {
         console.log('ChatPage: Загрузка получателя для id:', id);
         const res = await fetch(`/api/users/${id}`, {
           headers: { 'x-user-id': userId },
+          cache: 'no-store',
         });
         if (!res.ok) {
           const errorData = await res.json();
@@ -79,6 +80,7 @@ export default function ChatPage() {
                 <img
                   src={recipient.avatar || '/default-avatar.png'}
                   alt={recipient.username}
+                  className="telegram-user-avatar"
                 />
                 <div>
                   <div className="fw-bold">{recipient.username}</div>
