@@ -6,6 +6,7 @@ export interface IUser extends Document {
   password: string;
   bio: string;
   avatar: string;
+  createdAt: Date;
 }
 
 const UserSchema: Schema = new Schema({
@@ -17,6 +18,6 @@ const UserSchema: Schema = new Schema({
   createdAt: { type: Date, default: Date.now },
 });
 
+console.log('UserSchema: Модель создана, email required:', UserSchema.path('email').isRequired);
+
 export default mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
-
-

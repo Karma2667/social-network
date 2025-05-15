@@ -1,17 +1,17 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Container, Row, Col, Form, ListGroup, Alert, Button } from 'react-bootstrap';
+import { Container, Row, Col, Form, ListGroup, Alert, Image } from 'react-bootstrap';
 import { useAuth } from '@/lib/AuthContext';
 import AppNavbar from '@/app/Components/Navbar';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Chat from '@/app/Components/Chat';
 
 interface User {
   _id: string;
   username: string;
   avatar: string;
-  online: boolean;
 }
 
 function ChatListContent() {
@@ -21,7 +21,33 @@ function ChatListContent() {
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [isDesktop, setIsDesktop] = useState(false);
 
+  console.log('ChatList: Инициализация, userId:', userId, 'isInitialized:', isInitialized);
+
+  // Проверка ширины экрана
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(min-width: 768px)');
+    console.log('ChatList: Начальная проверка isDesktop:', mediaQuery.matches);
+    setIsDesktop(mediaQuery.matches);
+    const handleResize = (e: MediaQueryListEvent) => {
+      console.log('ChatList: Изменение mediaQuery:', e.matches);
+      setIsDesktop(e.matches);
+    };
+    mediaQuery.addEventListener('change', handleResize);
+    return () => mediaQuery.removeEventListener('change', handleResize);
+  }, []);
+
+  // Перенаправление на /login
+  useEffect(() => {
+    if (isInitialized && !userId) {
+      console.log('ChatList: Нет userId, перенаправление на /login');
+      router.replace('/login');
+    }
+  }, [isInitialized, userId, router]);
+
+  // Загрузка пользователей
   useEffect(() => {
     if (!isInitialized || !userId) {
       console.log('ChatList: Ожидание инициализации или userId:', { isInitialized, userId });
@@ -56,6 +82,18 @@ function ChatListContent() {
     return () => clearTimeout(debounce);
   }, [isInitialized, userId, search]);
 
+  // Обработка клика по пользователю
+  const handleUserClick = (user: User) => {
+    console.log('ChatList: Клик на пользователя:', user._id, 'isDesktop:', isDesktop);
+    if (isDesktop) {
+      console.log('ChatList: Выбор пользователя для десктопа:', user.username);
+      setSelectedUser(user);
+    } else {
+      console.log('ChatList: Переход на /chat/[id] для мобильного:', `/chat/${user._id}`);
+      router.push(`/chat/${user._id}`);
+    }
+  };
+
   if (!isInitialized) {
     console.log('ChatList: Ожидание инициализации');
     return (
@@ -71,7 +109,7 @@ function ChatListContent() {
       <AppNavbar />
       <Container fluid className="p-0" style={{ height: 'calc(100vh - 56px)' }}>
         <Row className="h-100 m-0">
-          <Col xs={12} className="telegram-sidebar p-0">
+          <Col xs={12} md={4} className="telegram-sidebar p-0">
             <div className="p-3 border-bottom">
               <Form.Control
                 type="text"
@@ -95,24 +133,44 @@ function ChatListContent() {
                     <ListGroup.Item
                       key={user._id}
                       action
-                      as={Link}
-                      href={`/chat/${user._id}`}
-                      className="telegram-user-item"
+                      onClick={() => handleUserClick(user)}
+                      className={`telegram-user-item ${selectedUser?._id === user._id && isDesktop ? 'active' : ''}`}
                     >
-                      <img
+                      <Image
                         src={user.avatar || '/default-avatar.png'}
                         alt={user.username}
+                        roundedCircle
                         className="telegram-user-avatar"
                       />
                       <span className="telegram-user-name">{user.username}</span>
-                      <span className="text-muted small ms-auto">
-                        {user.online ? 'Онлайн' : 'Офлайн'}
-                      </span>
                     </ListGroup.Item>
                   ))}
                 </ListGroup>
               )}
             </div>
+          </Col>
+          <Col md={8} className="telegram-chat d-none d-md-flex flex-column">
+            {selectedUser ? (
+              <>
+                <div className="telegram-chat-header d-flex align-items-center p-3 border-bottom">
+                  <Image
+                    src={selectedUser.avatar || '/default-avatar.png'}
+                    alt={selectedUser.username}
+                    roundedCircle
+                    className="telegram-user-avatar"
+                  />
+                  <div className="fw-bold">{selectedUser.username}</div>
+                </div>
+                <Chat
+                  recipientId={selectedUser._id}
+                  recipientUsername={selectedUser.username}
+                />
+              </>
+            ) : (
+              <div className="d-flex align-items-center justify-content-center flex-grow-1 text-muted">
+                Выберите пользователя для начала общения
+              </div>
+            )}
           </Col>
         </Row>
       </Container>

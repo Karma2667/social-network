@@ -1,73 +1,103 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 
 interface AuthContextType {
   userId: string | null;
   isInitialized: boolean;
   logout: () => void;
-  login: (userId: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
   userId: null,
   isInitialized: false,
   logout: () => {},
-  login: () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
 
-  useEffect(() => {
-    console.log('AuthProvider: Начало инициализации');
-    if (typeof window === 'undefined') {
+  console.log('AuthProvider: Начало инициализации, pathname:', pathname);
+
+  const checkAuth = useCallback(async () => {
+    console.log('AuthProvider: Проверка авторизации, текущий путь:', pathname);
+    const authToken = localStorage.getItem('authToken');
+    console.log('AuthProvider: Токен из localStorage:', authToken);
+
+    if (!authToken) {
+      console.log('AuthProvider: Токен отсутствует, установка isInitialized');
       setIsInitialized(true);
+      if (pathname !== '/login' && pathname !== '/register') {
+        console.log('AuthProvider: Нет токена, перенаправление на /login');
+        router.replace('/login');
+      }
       return;
     }
 
-    const storedUserId = localStorage.getItem('userId') || '67d2a7a473abc791ba0f20b8'; // Хардкод для теста
-    setUserId(storedUserId);
-    setIsInitialized(true);
-    console.log('AuthProvider: Инициализация завершена, userId:', storedUserId);
-  }, []); // Убраны зависимости
-
-  const login = (userId: string) => {
-    if (typeof window === 'undefined') return;
     try {
-      localStorage.setItem('userId', userId);
-      setUserId(userId);
-      console.log('AuthProvider: Вход выполнен, userId:', userId);
+      const res = await fetch('/api/auth/me', {
+        cache: 'no-store',
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      console.log('AuthProvider: Ответ /api/auth/me:', res.status, res.statusText);
+
+      if (!res.ok) {
+        throw new Error(`Не удалось проверить авторизацию: ${res.status} ${res.statusText}`);
+      }
+
+      const data = await res.json();
+      console.log('AuthProvider: Данные /api/auth/me:', data);
+      if (data.userId) {
+        setUserId(data.userId);
+      } else {
+        setUserId(null);
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('username');
+      }
+      setIsInitialized(true);
+
+      if (!data.userId && pathname !== '/login' && pathname !== '/register') {
+        console.log('AuthProvider: Нет userId, перенаправление на /login');
+        router.replace('/login');
+      }
     } catch (err) {
-      console.error('AuthProvider: Ошибка при входе:', err);
-    }
-  };
-
-  const logout = () => {
-    if (typeof window === 'undefined') return;
-    try {
-      localStorage.removeItem('userId');
+      console.error('AuthProvider: Ошибка инициализации:', err instanceof Error ? err.message : 'Неизвестная ошибка');
       setUserId(null);
-      console.log('AuthProvider: Выход выполнен');
-      window.location.replace('/login');
-    } catch (err) {
-      console.error('AuthProvider: Ошибка при выходе:', err);
-      window.location.replace('/login');
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('username');
+      setIsInitialized(true);
+      if (pathname !== '/login' && pathname !== '/register') {
+        console.log('AuthProvider: Ошибка авторизации, перенаправление на /login');
+        router.replace('/login');
+      }
     }
-  };
+  }, [pathname, router]);
+
+  useEffect(() => {
+    if (!isInitialized && !userId) {
+      checkAuth();
+    }
+  }, [checkAuth, isInitialized, userId]);
+
+  const logout = useCallback(() => {
+    console.log('AuthProvider: Выполнение logout, userId:', userId);
+    setUserId(null);
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('username');
+    router.push('/login');
+  }, [router]);
 
   return (
-    <AuthContext.Provider value={{ userId, isInitialized, logout, login }}>
+    <AuthContext.Provider value={{ userId, isInitialized, logout }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+  return useContext(AuthContext);
 }

@@ -9,9 +9,13 @@ export const metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  console.log('RootLayout: Рендеринг начат');
   return (
     <ClientAuthProvider>
       <html lang="en" suppressHydrationWarning>
+        <head>
+          <link rel="stylesheet" href="/_next/static/css/app/layout.css" />
+        </head>
         <body>
           <Container fluid className="p-0">
             {children}

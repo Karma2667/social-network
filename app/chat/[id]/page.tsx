@@ -1,11 +1,10 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Container, Row, Col, Button } from 'react-bootstrap';
+import { Container, Row, Col, Button, Image } from 'react-bootstrap';
 import { useAuth } from '@/lib/AuthContext';
 import Chat from '@/app/Components/Chat';
-import { useParams } from 'next/navigation';
-import Link from 'next/link';
+import { useParams, useRouter } from 'next/navigation';
 
 interface User {
   _id: string;
@@ -17,6 +16,7 @@ interface User {
 export default function ChatPage() {
   const { userId, isInitialized } = useAuth();
   const { id } = useParams();
+  const router = useRouter();
   const [recipient, setRecipient] = useState<User | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -61,7 +61,7 @@ export default function ChatPage() {
 
   if (!userId) {
     console.log('ChatPage: Рендеринг: Нет userId, перенаправление на /login');
-    window.location.replace('/login');
+    router.replace('/login');
     return null;
   }
 
@@ -69,17 +69,31 @@ export default function ChatPage() {
     <Container fluid className="p-0 vh-100">
       <Row className="h-100 m-0">
         <Col xs={12} className="telegram-chat active p-0">
-          <div className="telegram-chat-header">
-            <Link href="/chat" className="d-md-none me-2">
-              <Button variant="outline-primary" size="sm">
-                Назад
-              </Button>
-            </Link>
+          <div className="telegram-chat-header d-flex align-items-center p-3 border-bottom">
+            <Button
+              variant="link"
+              className="me-2 p-0"
+              onClick={() => router.push('/chat')}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                fill="currentColor"
+                viewBox="0 0 16 16"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8z"
+                />
+              </svg>
+            </Button>
             {recipient && (
               <>
-                <img
+                <Image
                   src={recipient.avatar || '/default-avatar.png'}
                   alt={recipient.username}
+                  roundedCircle
                   className="telegram-user-avatar"
                 />
                 <div>

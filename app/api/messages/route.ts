@@ -56,7 +56,7 @@ export async function GET(request: Request) {
     return NextResponse.json(messages, { status: 200 });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-    console.error('GET /api/messages ошибка:', errorMessage);
+    console.error('GET /api/messages: Ошибка:', errorMessage, error);
     console.timeEnd('GET /api/messages: Total');
     return NextResponse.json({ error: 'Не удалось загрузить сообщения', details: errorMessage }, { status: 500 });
   }
@@ -69,15 +69,18 @@ export async function POST(request: Request) {
     await dbConnect();
     console.log('POST /api/messages: MongoDB подключен');
 
-    const { chatId, recipientId, content } = await request.json();
+    const body = await request.json();
+    console.log('POST /api/messages: Тело запроса:', body);
+    const { chatId, recipientId, content } = body;
     const userId = request.headers.get('x-user-id')?.trim();
-    console.log('POST /api/messages получено:', { chatId, recipientId, content, userId });
+    console.log('POST /api/messages: Извлечённые данные:', { chatId, recipientId, content, userId });
 
-    if (!userId || !content || (!chatId && !recipientId)) {
-      console.log('POST /api/messages: Отсутствуют поля');
-      return NextResponse.json({ error: 'Отсутствуют обязательные поля' }, { status: 400 });
+    if (!userId || !content) {
+      console.log('POST /api/messages: Отсутствуют обязательные поля userId или content');
+      return NextResponse.json({ error: 'Отсутствуют обязательные поля userId или content' }, { status: 400 });
     }
 
+    console.log('POST /api/messages: Создание сообщения с:', { chatId, recipientId, senderId: userId, content });
     const message = new Message({
       chatId,
       recipientId,
@@ -88,13 +91,14 @@ export async function POST(request: Request) {
       readBy: [],
     });
 
+    console.log('POST /api/messages: Сообщение перед сохранением:', message.toObject());
     await message.save();
-    console.log('POST /api/messages: Сообщение создано:', message.toObject());
+    console.log('POST /api/messages: Сообщение успешно сохранено:', message.toObject());
     console.timeEnd('POST /api/messages: Total');
     return NextResponse.json(message, { status: 201 });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-    console.error('POST /api/messages ошибка:', errorMessage);
+    console.error('POST /api/messages: Ошибка при сохранении:', errorMessage, error);
     console.timeEnd('POST /api/messages: Total');
     return NextResponse.json({ error: 'Не удалось отправить сообщение', details: errorMessage }, { status: 500 });
   }
@@ -134,7 +138,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json(message, { status: 200 });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-    console.error('PATCH /api/messages ошибка:', errorMessage);
+    console.error('PATCH /api/messages: Ошибка при обновлении:', errorMessage, error);
     console.timeEnd('PATCH /api/messages: Total');
     return NextResponse.json({ error: 'Не удалось обновить сообщение', details: errorMessage }, { status: 500 });
   }

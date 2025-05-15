@@ -1,126 +1,92 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { Container, Row, Col, Form, ListGroup, Alert } from 'react-bootstrap';
-import { useAuth } from '@/lib/AuthContext';
-import AppNavbar from '@/app/Components/Navbar';
+import { useState } from 'react';
+import { Container, Form, Button, Alert } from 'react-bootstrap';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
-interface User {
-  _id: string;
-  username: string;
-  avatar: string;
-}
-
-export default function ChatList() {
-  const { userId, isInitialized } = useAuth();
-  const [users, setUsers] = useState<User[]>([]);
-  const [search, setSearch] = useState('');
+export default function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const router = useRouter();
 
-  useEffect(() => {
-    if (!isInitialized || !userId || !search.trim()) {
-      console.log('ChatList: Ожидание инициализации, userId или поискового запроса:', { userId, search });
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    console.log('Login: Попытка входа:', { email, password: password ? '[provided]' : '[missing]' });
+
+    if (!email.trim() || !password.trim()) {
+      console.log('Login: Пустой email или password');
+      setError('Пожалуйста, заполните все поля');
+      setSubmitting(false);
       return;
     }
 
-    const fetchUsers = async () => {
-      try {
-        setLoading(true);
-        console.log('ChatList: Поиск пользователей для userId:', userId, 'с запросом:', search);
-        const res = await fetch(`/api/users?search=${encodeURIComponent(search)}`, {
-          headers: { 'x-user-id': userId },
-        });
-        if (!res.ok) {
-          const errorData = await res.json();
-          console.error('ChatList: Ошибка API:', errorData);
-          throw new Error(errorData.error || 'Не удалось найти пользователей');
-        }
-        const data = await res.json();
-        console.log('ChatList: Пользователи найдены:', data);
-        setUsers(data);
-        setLoading(false);
-      } catch (err: any) {
-        console.error('ChatList: Ошибка поиска пользователей:', err.message);
-        setError(err.message);
-        setLoading(false);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password: password.trim() }),
+      });
+      console.log('Login: Ответ /api/auth/login:', res.status, res.statusText);
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.log('Login: Ошибка сервера:', errorData);
+        throw new Error(errorData.error || 'Ошибка входа');
       }
-    };
 
-    const debounce = setTimeout(fetchUsers, 300);
-    return () => clearTimeout(debounce);
-  }, [isInitialized, userId, search]);
+      const data = await res.json();
+      console.log('Login: Вход успешен:', { userId: data.userId, token: data.token, username: data.username });
 
-  if (!isInitialized) {
-    console.log('ChatList: Рендеринг: Ожидание инициализации');
-    return (
-      <>
-        <AppNavbar />
-        <div className="d-flex align-items-center justify-content-center vh-100">Загрузка...</div>
-      </>
-    );
-  }
-
-  if (!userId && typeof window !== 'undefined') {
-    console.log('ChatList: Рендеринг: Нет userId, перенаправление на /login');
-    window.location.replace('/login');
-    return null;
-  }
+      localStorage.setItem('authToken', data.token);
+      localStorage.setItem('username', data.username);
+      router.push('/chat');
+    } catch (err: any) {
+      console.error('Login: Ошибка входа:', err.message);
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
-    <>
-      <AppNavbar />
-      <Container fluid className="p-0" style={{ height: 'calc(100vh - 56px)' }}>
-        <Row className="h-100 m-0">
-          <Col md={4} className="telegram-sidebar p-0">
-            <div className="p-3 border-bottom">
-              <Form.Control
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Поиск пользователей..."
-                className="telegram-search"
-              />
-            </div>
-            <div className="overflow-auto">
-              {error && <Alert variant="danger" className="m-3">{error}</Alert>}
-              {loading ? (
-                <div className="p-3">Загрузка...</div>
-              ) : users.length === 0 && search.trim() ? (
-                <div className="p-3 text-muted">Пользователи не найдены</div>
-              ) : users.length === 0 ? (
-                <div className="p-3 text-muted">Введите имя для поиска</div>
-              ) : (
-                <ListGroup variant="flush">
-                  {users.map((user) => (
-                    <ListGroup.Item
-                      key={user._id}
-                      action
-                      as={Link}
-                      href={`/chat/${user._id}`}
-                      className="telegram-user-item"
-                    >
-                      <img
-                        src={user.avatar || '/default-avatar.png'}
-                        alt={user.username}
-                        className="telegram-user-avatar"
-                      />
-                      <div>
-                        <div className="fw-bold">{user.username}</div>
-                        <div className="text-muted small">Нажмите, чтобы открыть чат</div>
-                      </div>
-                    </ListGroup.Item>
-                  ))}
-                </ListGroup>
-              )}
-            </div>
-          </Col>
-          <Col md={8} className="d-none d-md-flex align-items-center justify-content-center telegram-chat">
-            <div className="text-muted">Выберите чат для начала общения</div>
-          </Col>
-        </Row>
-      </Container>
-    </>
+    <Container className="d-flex align-items-center justify-content-center vh-100">
+      <div className="w-100" style={{ maxWidth: '400px' }}>
+        <h2 className="text-center mb-4">Вход</h2>
+        {error && <Alert variant="danger">{error}</Alert>}
+        <Form onSubmit={handleSubmit}>
+          <Form.Group className="mb-3">
+            <Form.Label>Email</Form.Label>
+            <Form.Control
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Введите email"
+              disabled={submitting}
+            />
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>Пароль</Form.Label>
+            <Form.Control
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Введите пароль"
+              disabled={submitting}
+            />
+          </Form.Group>
+          <Button variant="primary" type="submit" className="w-100" disabled={submitting}>
+            {submitting ? 'Вход...' : 'Войти'}
+          </Button>
+        </Form>
+        <div className="text-center mt-3">
+          <p>Нет аккаунта? <Link href="/register">Зарегистрироваться</Link></p>
+        </div>
+      </div>
+    </Container>
   );
 }

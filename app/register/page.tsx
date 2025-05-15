@@ -1,65 +1,75 @@
-'use client';
+"use client";
 
 import { useState } from 'react';
 import { Container, Form, Button, Alert } from 'react-bootstrap';
-import { useAuth } from '@/lib/AuthContext';
-import AppNavbar from '@/app/Components/Navbar';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
-export default function Login() {
-  const { login } = useAuth();
+export default function RegisterPage() {
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setLoading(true);
+    if (submitting) return;
+    setSubmitting(true);
+    console.log('Register: Попытка регистрации:', { username, email, password: password ? '[provided]' : '[missing]' });
 
-    // Отладка: логируем данные перед отправкой
-    console.log('Login: Отправка данных:', { email, password });
-
-    if (!email.trim() || !password.trim()) {
-      console.error('Login: Пустые поля:', { email, password });
-      setError('Заполните все поля');
-      setLoading(false);
+    if (!username.trim() || !email.trim() || !password.trim()) {
+      console.log('Register: Пустые поля');
+      setError('Пожалуйста, заполните все поля');
+      setSubmitting(false);
       return;
     }
 
     try {
-      const response = await fetch('/api/users/login', {
+      const res = await fetch('/api/auth/register', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim(), email: email.trim(), password: password.trim() }),
       });
+      console.log('Register: Ответ /api/auth/register:', res.status, res.statusText);
 
-      const data = await response.json();
-      if (!response.ok) {
-        console.error('Login: Ошибка API:', data);
-        throw new Error(data.error || 'Не удалось войти');
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.log('Register: Ошибка сервера:', errorData);
+        throw new Error(errorData.error || 'Ошибка регистрации');
       }
 
-      console.log('Login: Успешный вход:', data);
-      login(data.userId); // Устанавливаем userId через AuthContext
-      window.location.replace('/chat'); // Перенаправление после входа
+      const data = await res.json();
+      console.log('Register: Регистрация успешна:', { userId: data.userId, token: data.token, username: data.username });
+
+      localStorage.setItem('authToken', data.token);
+      localStorage.setItem('username', data.username);
+      router.push('/chat');
     } catch (err: any) {
-      console.error('Login: Ошибка входа:', err.message);
+      console.error('Register: Ошибка регистрации:', err.message);
       setError(err.message);
-      setLoading(false);
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
-    <>
-      <AppNavbar />
-      <Container className="my-4">
-        <h2>Вход</h2>
+    <Container className="d-flex align-items-center justify-content-center vh-100">
+      <div className="w-100" style={{ maxWidth: '400px' }}>
+        <h2 className="text-center mb-4">Регистрация</h2>
         {error && <Alert variant="danger">{error}</Alert>}
         <Form onSubmit={handleSubmit}>
+          <Form.Group className="mb-3">
+            <Form.Label>Имя пользователя</Form.Label>
+            <Form.Control
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Введите имя пользователя"
+              disabled={submitting}
+            />
+          </Form.Group>
           <Form.Group className="mb-3">
             <Form.Label>Email</Form.Label>
             <Form.Control
@@ -67,7 +77,7 @@ export default function Login() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Введите email"
-              disabled={loading}
+              disabled={submitting}
             />
           </Form.Group>
           <Form.Group className="mb-3">
@@ -77,17 +87,17 @@ export default function Login() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Введите пароль"
-              disabled={loading}
+              disabled={submitting}
             />
           </Form.Group>
-          <Button variant="primary" type="submit" disabled={loading}>
-            {loading ? 'Вход...' : 'Войти'}
+          <Button variant="primary" type="submit" className="w-100" disabled={submitting}>
+            {submitting ? 'Регистрация...' : 'Зарегистрироваться'}
           </Button>
         </Form>
-        <p className="mt-3">
-          Нет аккаунта? <Link href="/register">Зарегистрируйтесь</Link>
-        </p>
-      </Container>
-    </>
+        <div className="text-center mt-3">
+          <p>Уже есть аккаунт? <Link href="/login">Войти</Link></p>
+        </div>
+      </div>
+    </Container>
   );
 }
