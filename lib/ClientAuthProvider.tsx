@@ -17,25 +17,25 @@ const AuthContext = createContext<AuthContextType>({
   logout: () => {},
 });
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+function ClientAuthProvider({ children }: { children: React.ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
-  console.log('AuthProvider: Начало инициализации, pathname:', pathname);
+  console.log('ClientAuthProvider: Начало инициализации, pathname:', pathname);
 
   const checkAuth = useCallback(async () => {
-    console.log('AuthProvider: Проверка авторизации, текущий путь:', pathname);
+    console.log('ClientAuthProvider: Проверка авторизации, текущий путь:', pathname);
     const authToken = localStorage.getItem('authToken');
-    console.log('AuthProvider: Токен из localStorage:', authToken);
+    console.log('ClientAuthProvider: Токен из localStorage:', authToken);
 
     if (!authToken) {
-      console.log('AuthProvider: Токен отсутствует, установка isInitialized');
+      console.log('ClientAuthProvider: Токен отсутствует, установка isInitialized');
       setIsInitialized(true);
       if (!['/login', '/register'].includes(pathname)) {
-        console.log('AuthProvider: Нет токена, перенаправление на /login');
+        console.log('ClientAuthProvider: Нет токена, перенаправление на /login');
         router.replace('/login');
       }
       return;
@@ -46,14 +46,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         cache: 'no-store',
         headers: { Authorization: `Bearer ${authToken}` },
       });
-      console.log('AuthProvider: Ответ /api/auth/me:', res.status, res.statusText);
+      console.log('ClientAuthProvider: Ответ /api/auth/me:', res.status, res.statusText);
 
       if (!res.ok) {
         throw new Error(`Не удалось проверить авторизацию: ${res.status} ${res.statusText}`);
       }
 
       const data = await res.json();
-      console.log('AuthProvider: Данные /api/auth/me:', data);
+      console.log('ClientAuthProvider: Данные /api/auth/me:', data);
       if (data.userId) {
         setUserId(data.userId);
         const storedUsername = localStorage.getItem('username') || data.username || null;
@@ -68,18 +68,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsInitialized(true);
 
       if (!data.userId && !['/login', '/register'].includes(pathname)) {
-        console.log('AuthProvider: Нет userId, перенаправление на /login');
+        console.log('ClientAuthProvider: Нет userId, перенаправление на /login');
         router.replace('/login');
       }
     } catch (err) {
-      console.error('AuthProvider: Ошибка инициализации:', err instanceof Error ? err.message : 'Неизвестная ошибка');
+      console.error('ClientAuthProvider: Ошибка инициализации:', err instanceof Error ? err.message : 'Неизвестная ошибка');
       setUserId(null);
       setUsername(null);
       localStorage.removeItem('authToken');
       localStorage.removeItem('username');
       setIsInitialized(true);
       if (!['/login', '/register'].includes(pathname)) {
-        console.log('AuthProvider: Ошибка авторизации, перенаправление на /login');
+        console.log('ClientAuthProvider: Ошибка авторизации, перенаправление на /login');
         router.replace('/login');
       }
     }
@@ -87,10 +87,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     checkAuth();
-  }, [checkAuth, pathname]);
+  }, [checkAuth]);
 
   const logout = useCallback(() => {
-    console.log('AuthProvider: Выполнение logout, userId:', userId);
+    console.log('ClientAuthProvider: Выполнение logout, userId:', userId);
     setUserId(null);
     setUsername(null);
     localStorage.removeItem('authToken');
@@ -106,6 +106,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function useAuth() {
-  return useContext(AuthContext);
-}
+export const useAuth = () => useContext(AuthContext);
+
+export default ClientAuthProvider;

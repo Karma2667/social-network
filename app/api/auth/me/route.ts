@@ -1,51 +1,57 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
+import User from '@/models/User';
 import Session from '@/models/Session';
 
-interface ISession {
+// Define interfaces for lean documents
+interface LeanSession {
   _id: string;
   userId: string;
   token: string;
-  createdAt: Date;
-  expiresAt: Date;
+  __v?: number;
+}
+
+interface LeanUser {
+  _id: string;
+  username: string;
+  __v?: number;
 }
 
 export async function GET(request: Request) {
   console.time('GET /api/auth/me: Total');
-  console.log('GET /api/auth/me: Запрос получен:', request.url);
+  console.log('GET /api/auth/me: Запрос получен');
   try {
     await dbConnect();
     console.log('GET /api/auth/me: MongoDB подключен');
 
-    const userId = request.headers.get('x-user-id')?.trim();
-    const authToken = request.headers.get('authorization')?.replace('Bearer ', '').trim();
-    console.log('GET /api/auth/me: Параметры:', { userId, authToken });
-
-    if (!userId && !authToken) {
-      console.log('GET /api/auth/me: Отсутствуют userId и authToken');
-      return NextResponse.json({ error: 'Требуется userId или токен авторизации' }, { status: 401 });
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('GET /api/auth/me: Отсутствует или неверный заголовок Authorization');
+      return NextResponse.json({ error: 'Требуется токен авторизации' }, { status: 401 });
     }
 
-    let session: ISession | null;
-    if (authToken) {
-      session = await Session.findOne({ token: authToken, expiresAt: { $gt: new Date() } }).lean<ISession>();
-      console.log('GET /api/auth/me: Сессия по токену:', session ? session._id : 'не найдена');
-    } else {
-      session = await Session.findOne({ userId, expiresAt: { $gt: new Date() } }).lean<ISession>();
-      console.log('GET /api/auth/me: Сессия по userId:', session ? session._id : 'не найдена');
-    }
+    const token = authHeader.split(' ')[1];
+    console.log('GET /api/auth/me: Токен:', token);
 
+    const session = await Session.findOne({ token }).lean<LeanSession>();
     if (!session) {
-      console.log('GET /api/auth/me: Активная сессия не найдена');
-      return NextResponse.json({ error: 'Сессия не найдена или истекла' }, { status: 401 });
+      console.log('GET /api/auth/me: Сессия не найдена');
+      return NextResponse.json({ error: 'Неверный токен' }, { status: 401 });
     }
 
+    const user = await User.findById(session.userId).select('username').lean<LeanUser>();
+    if (!user) {
+      console.log('GET /api/auth/me: Пользователь не найден');
+      return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 });
+    }
+
+    console.log('GET /api/auth/me: Пользователь найден:', { userId: session.userId, username: user.username });
     console.timeEnd('GET /api/auth/me: Total');
-    return NextResponse.json({ userId: session.userId }, { status: 200 });
+    return NextResponse.json({ userId: session.userId, username: user.username }, { status: 200 });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
     console.error('GET /api/auth/me: Ошибка:', errorMessage, error);
     console.timeEnd('GET /api/auth/me: Total');
-    return NextResponse.json({ error: 'Не удалось проверить авторизацию', details: errorMessage }, { status: 500 });
+    return NextResponse.json({ error: 'Ошибка проверки авторизации', details: errorMessage }, { status: 500 });
   }
 }

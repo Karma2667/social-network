@@ -1,6 +1,7 @@
 import './globals.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
-import ClientAuthProvider from './ClientAuthProvider';
+import ClientAuthProvider from '@/lib/ClientAuthProvider';
+import Navbar from '@/app/Components/Navbar';
 import { Container } from 'react-bootstrap';
 
 export const metadata = {
@@ -11,17 +12,18 @@ export const metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   console.log('RootLayout: Рендеринг начат');
   return (
-    <ClientAuthProvider>
-      <html lang="en" suppressHydrationWarning>
-        <head>
-          <link rel="stylesheet" href="/_next/static/css/app/layout.css" />
-        </head>
-        <body>
+    <html lang="ru" suppressHydrationWarning>
+      <head>
+        <link rel="stylesheet" href="/_next/static/css/app/layout.css" />
+      </head>
+      <body>
+        <ClientAuthProvider>
+          <Navbar />
           <Container fluid className="p-0">
             {children}
           </Container>
-        </body>
-      </html>
-    </ClientAuthProvider>
+        </ClientAuthProvider>
+      </body>
+    </html>
   );
 }
