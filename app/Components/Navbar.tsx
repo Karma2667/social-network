@@ -13,6 +13,7 @@ export default function Navbar() {
 
   useEffect(() => {
     if (userId && isInitialized) {
+      console.log('Navbar: Загрузка уведомлений для userId:', userId);
       fetch('/api/notifications', {
         headers: { 'x-user-id': userId },
       })
@@ -27,17 +28,17 @@ export default function Navbar() {
 
   if (!isInitialized) {
     console.log('Navbar: Ожидание инициализации');
-    return null;
+    return <div>Загрузка...</div>;
   }
 
   return (
     <BSNavbar bg="light" expand="lg" className="mb-3">
-      <BSNavbar.Brand as={Link} href="/chat">Social Network</BSNavbar.Brand>
+      <BSNavbar.Brand as={Link} href="/">Social Network</BSNavbar.Brand>
       <BSNavbar.Toggle aria-controls="basic-navbar-nav" />
       <BSNavbar.Collapse id="basic-navbar-nav">
         <Nav className="me-auto">
           <Nav.Link as={Link} href="/chat">Чат</Nav.Link>
-          <Nav.Link as={Link} href="/profile">Профиль</Nav.Link>
+          <Nav.Link as={Link} href="/">Профиль</Nav.Link>
         </Nav>
         <Nav>
           <Nav.Link disabled>@{username || 'Гость'}</Nav.Link>

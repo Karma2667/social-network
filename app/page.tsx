@@ -1,234 +1,322 @@
-'use client';
+"use client";
 
 import { useState, useEffect } from 'react';
-import { Container, Row, Col, Form, Button, Image, ListGroup, Alert } from 'react-bootstrap';
-import { useAuth } from '@/lib/AuthContext';
-import AppNavbar from '@/app/Components/Navbar';
-import Link from 'next/link';
+import { useAuth } from '@/lib/ClientAuthProvider';
 import { useRouter } from 'next/navigation';
+import { Container, Row, Col, Form, Button, Alert, ListGroup } from 'react-bootstrap';
 
-interface Post {
-  _id: string;
-  userId: string;
-  username: string;
-  avatar: string;
-  content: string;
-  createdAt: string;
-}
-
-interface UserProfile {
-  _id: string;
-  username: string;
-  email: string;
-  avatar: string;
-}
-
-export default function Home() {
-  const { userId, isInitialized, logout } = useAuth();
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [postInput, setPostInput] = useState('');
-  const [posting, setPosting] = useState(false);
+export default function HomePage() {
+  const { userId, isInitialized, username } = useAuth();
   const router = useRouter();
+  const [isDesktop, setIsDesktop] = useState(true);
+  const [profile, setProfile] = useState({ name: '', username: '', bio: '' });
+  const [posts, setPosts] = useState<any[]>([]);
+  const [postContent, setPostContent] = useState('');
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Перенаправление на /login, если нет userId
-  useEffect(() => {
-    if (isInitialized && !userId) {
-      console.log('Home: Нет userId, перенаправление на /login');
-      router.replace('/login');
-    }
-  }, [isInitialized, userId, router]);
+  console.log('HomePage: Инициализация, userId:', userId, 'isInitialized:', isInitialized, 'username:', username);
 
-  // Загрузка профиля и постов
   useEffect(() => {
-    if (!isInitialized || !userId) {
-      console.log('Home: Ожидание инициализации или userId:', { userId });
+    const checkDesktop = () => {
+      const desktop = window.innerWidth > 768;
+      setIsDesktop(desktop);
+      console.log('HomePage: Проверка isDesktop:', desktop);
+    };
+    checkDesktop();
+    window.addEventListener('resize', checkDesktop);
+    return () => window.removeEventListener('resize', checkDesktop);
+  }, []);
+
+  useEffect(() => {
+    if (!isInitialized) {
+      console.log('HomePage: Ожидание инициализации');
       return;
     }
-
-    const fetchProfile = async () => {
-      try {
-        console.log('Home: Загрузка профиля для userId:', userId);
-        const res = await fetch(`/api/users/${userId}`, {
-          headers: { 'x-user-id': userId },
+    if (!userId) {
+      console.log('HomePage: Нет userId, перенаправление на /login');
+      router.replace('/login');
+      return;
+    }
+    console.log('HomePage: Загрузка данных профиля и постов для userId:', userId);
+    Promise.all([
+      fetch('/api/profile', { headers: { 'x-user-id': userId } }).then((res) => res.json()),
+      fetch('/api/posts', { headers: { 'x-user-id': userId } }).then((res) => res.json()),
+    ])
+      .then(([profileData, postsData]) => {
+        console.log('HomePage: Данные профиля загружены:', profileData);
+        console.log('HomePage: Посты загружены:', postsData);
+        setProfile({
+          name: profileData.name || '',
+          username: profileData.username || '',
+          bio: profileData.bio || '',
         });
-        if (!res.ok) {
-          const errorData = await res.json();
-          console.error('Home: Ошибка API профиля:', errorData);
-          throw new Error(errorData.error || 'Не удалось загрузить профиль');
-        }
-        const data = await res.json();
-        console.log('Home: Профиль загружен:', data);
-        setProfile(data);
-      } catch (err: any) {
-        console.error('Home: Ошибка загрузки профиля:', err.message);
-        setError(err.message);
-      }
-    };
+        setPosts(postsData);
+      })
+      .catch((err) => {
+        console.error('HomePage: Ошибка загрузки данных:', err.message);
+        setError('Ошибка загрузки данных');
+      });
+  }, [userId, isInitialized, router]);
 
-    const fetchPosts = async () => {
-      try {
-        setLoading(true);
-        console.log('Home: Загрузка постов для userId:', userId);
-        const res = await fetch(`/api/posts?userId=${userId}`, {
-          headers: { 'x-user-id': userId },
-        });
-        if (!res.ok) {
-          const errorData = await res.json();
-          console.error('Home: Ошибка API постов:', errorData);
-          throw new Error(errorData.error || 'Не удалось загрузить посты');
-        }
-        const data = await res.json();
-        console.log('Home: Посты загружены:', data);
-        setPosts(data);
-        setLoading(false);
-      } catch (err: any) {
-        console.error('Home: Ошибка загрузки постов:', err.message);
-        setError(err.message);
-        setLoading(false);
-      }
-    };
-
-    fetchProfile();
-    fetchPosts();
-  }, [isInitialized, userId]);
-
-  // Создание поста
-  const handleCreatePost = async () => {
-    if (!postInput.trim() || !userId) return;
+  const handleProfileSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    setError(null);
+    console.log('HomePage: Попытка обновления профиля:', profile);
 
     try {
-      setPosting(true);
-      console.log('Home: Создание поста для userId:', userId);
-      const res = await fetch('/api/posts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
-        body: JSON.stringify({ content: postInput, userId }),
+      const res = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userId || '',
+        },
+        body: JSON.stringify(profile),
       });
+      console.log('HomePage: Ответ /api/profile:', res.status, res.statusText);
+
       if (!res.ok) {
         const errorData = await res.json();
-        console.error('Home: Ошибка API создания поста:', errorData);
-        throw new Error(errorData.error || 'Не удалось создать пост');
+        throw new Error(errorData.error || 'Ошибка обновления профиля');
       }
-      const newPost = await res.json();
-      console.log('Home: Пост создан:', newPost);
-      setPosts((prev) => [newPost, ...prev]);
-      setPostInput('');
-      setPosting(false);
+
+      const updatedProfile = await res.json();
+      localStorage.setItem('username', updatedProfile.username);
+      setProfile(updatedProfile);
     } catch (err: any) {
-      console.error('Home: Ошибка создания поста:', err.message);
+      console.error('HomePage: Ошибка обновления:', err.message);
       setError(err.message);
-      setPosting(false);
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  if (!isInitialized) {
-    console.log('Home: Рендеринг: Ожидание инициализации');
-    return (
-      <>
-        <AppNavbar />
-        <div className="d-flex align-items-center justify-content-center vh-100">Загрузка...</div>
-      </>
-    );
+  const handlePostSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (submitting || !postContent.trim()) return;
+    setSubmitting(true);
+    setError(null);
+    console.log('HomePage: Попытка создания/обновления поста:', { postContent, editingPostId });
+
+    try {
+      const url = editingPostId ? `/api/posts/${editingPostId}` : '/api/posts';
+      const method = editingPostId ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userId || '',
+        },
+        body: JSON.stringify({ content: postContent, userId }),
+      });
+      console.log('HomePage: Ответ /api/posts:', res.status, res.statusText);
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.log('HomePage: Ошибка сервера:', errorData);
+        throw new Error(errorData.error || 'Ошибка с постом');
+      }
+
+      const updatedPost = await res.json();
+      setPosts((prev) =>
+        editingPostId
+          ? prev.map((post) => (post._id === editingPostId ? updatedPost : post))
+          : [updatedPost, ...prev]
+      );
+      setPostContent('');
+      setEditingPostId(null);
+    } catch (err: any) {
+      console.error('HomePage: Ошибка с постом:', err.message);
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEditPost = (post: any) => {
+    setPostContent(post.content);
+    setEditingPostId(post._id);
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    try {
+      const res = await fetch(`/api/posts/${postId}`, {
+        method: 'DELETE',
+        headers: { 'x-user-id': userId || '' },
+      });
+      if (res.ok) {
+        setPosts((prev) => prev.filter((post) => post._id !== postId));
+      }
+    } catch (err: any) {
+      console.error('HomePage: Ошибка удаления поста:', err.message);
+      setError(err.message);
+    }
+  };
+
+  if (!isInitialized || !userId) {
+    console.log('HomePage: Ожидание инициализации или userId');
+    return <div>Загрузка...</div>;
   }
 
   return (
-    <>
-      <AppNavbar />
-      <Container fluid className="p-0" style={{ height: 'calc(100vh - 56px)' }}>
-        <Row className="h-100 m-0">
-          <Col md={4} className="telegram-sidebar p-0">
-            <div className="p-3 border-bottom">
-              <h5 className="telegram-profile-title">Профиль</h5>
-            </div>
+    <Container fluid>
+      <Row>
+        {isDesktop && (
+          <Col md={3} className="border-end" style={{ backgroundColor: '#f8f9fa' }}>
             <div className="p-3">
-              {error && <Alert variant="danger">{error}</Alert>}
-              {profile ? (
-                <div className="telegram-profile">
-                  <Image
-                    src={profile.avatar || '/default-avatar.png'}
-                    alt={profile.username}
-                    className="telegram-profile-avatar"
-                    roundedCircle
+              <h5>Профиль</h5>
+              <Form onSubmit={handleProfileSubmit}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Имя</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={profile.name}
+                    onChange={(e) => setProfile({ ...profile, name: e.target.value })}
+                    placeholder="Введите имя"
+                    disabled={submitting}
                   />
-                  <div className="telegram-profile-info">
-                    <div className="fw-bold">{profile.username}</div>
-                    <div className="text-muted">{profile.email}</div>
-                  </div>
-                  <Link href="/profile/edit" passHref>
-                    <Button variant="outline-primary" className="telegram-profile-button">
-                      Редактировать профиль
-                    </Button>
-                  </Link>
+                </Form.Group>
+                <Form.Group className="mb-3">
+                  <Form.Label>Имя пользователя</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={profile.username}
+                    onChange={(e) => setProfile({ ...profile, username: e.target.value })}
+                    placeholder="Введите @username"
+                    disabled={submitting}
+                  />
+                </Form.Group>
+                <Form.Group className="mb-3">
+                  <Form.Label>Био</Form.Label>
+                  <Form.Control
+                    as="textarea"
+                    value={profile.bio}
+                    onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
+                    placeholder="Расскажите о себе"
+                    disabled={submitting}
+                  />
+                </Form.Group>
+                <Button variant="primary" type="submit" disabled={submitting}>
+                  {submitting ? 'Сохранение...' : 'Сохранить'}
+                </Button>
+                <Button
+                  variant="danger"
+                  className="ms-2"
+                  onClick={() => useAuth().logout()}
+                  disabled={submitting}
+                >
+                  Выйти
+                </Button>
+              </Form>
+            </div>
+          </Col>
+        )}
+        <Col md={isDesktop ? 9 : 12}>
+          <div className="p-3">
+            <h5>Посты</h5>
+            <Form onSubmit={handlePostSubmit} className="mb-3">
+              <Form.Group className="mb-3">
+                <Form.Control
+                  as="textarea"
+                  value={postContent}
+                  onChange={(e) => setPostContent(e.target.value)}
+                  placeholder="Что нового?"
+                  disabled={submitting}
+                />
+              </Form.Group>
+              <Button variant="primary" type="submit" disabled={submitting || !postContent.trim()}>
+                {submitting ? 'Отправка...' : editingPostId ? 'Обновить' : 'Опубликовать'}
+              </Button>
+              {editingPostId && (
+                <Button
+                  variant="secondary"
+                  className="ms-2"
+                  onClick={() => {
+                    setPostContent('');
+                    setEditingPostId(null);
+                  }}
+                  disabled={submitting}
+                >
+                  Отмена
+                </Button>
+              )}
+            </Form>
+            {error && <Alert variant="danger">{error}</Alert>}
+            <ListGroup>
+              {posts.map((post) => (
+                <ListGroup.Item key={post._id}>
+                  <p>{post.content}</p>
                   <Button
-                    variant="outline-danger"
-                    className="telegram-profile-button"
-                    onClick={logout}
+                    variant="link"
+                    onClick={() => handleEditPost(post)}
+                    className="me-2"
+                  >
+                    Редактировать
+                  </Button>
+                  <Button
+                    variant="link"
+                    onClick={() => handleDeletePost(post._id)}
+                    className="text-danger"
+                  >
+                    Удалить
+                  </Button>
+                </ListGroup.Item>
+              ))}
+            </ListGroup>
+            {!isDesktop && (
+              <div className="mt-4">
+                <h5>Настройки</h5>
+                <Form onSubmit={handleProfileSubmit}>
+                  <Form.Group className="mb-3">
+                    <Form.Label>Имя</Form.Label>
+                    <Form.Control
+                      type="text"
+                      value={profile.name}
+                      onChange={(e) => setProfile({ ...profile, name: e.target.value })}
+                      placeholder="Введите имя"
+                      disabled={submitting}
+                    />
+                  </Form.Group>
+                  <Form.Group className="mb-3">
+                    <Form.Label>Имя пользователя</Form.Label>
+                    <Form.Control
+                      type="text"
+                      value={profile.username}
+                      onChange={(e) => setProfile({ ...profile, username: e.target.value })}
+                      placeholder="Введите @username"
+                      disabled={submitting}
+                    />
+                  </Form.Group>
+                  <Form.Group className="mb-3">
+                    <Form.Label>Био</Form.Label>
+                    <Form.Control
+                      as="textarea"
+                      value={profile.bio}
+                      onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
+                      placeholder="Расскажите о себе"
+                      disabled={submitting}
+                    />
+                  </Form.Group>
+                  <Button variant="primary" type="submit" disabled={submitting}>
+                    {submitting ? 'Сохранение...' : 'Сохранить'}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    className="ms-2"
+                    onClick={() => useAuth().logout()}
+                    disabled={submitting}
                   >
                     Выйти
                   </Button>
-                </div>
-              ) : (
-                <div className="text-muted">Загрузка профиля...</div>
-              )}
-            </div>
-          </Col>
-          <Col md={8} className="telegram-posts d-flex flex-column">
-            <div className="p-3 border-bottom">
-              <h5>Ваши посты</h5>
-            </div>
-            <div className="p-3 border-bottom">
-              <Form.Control
-                as="textarea"
-                rows={3}
-                value={postInput}
-                onChange={(e) => setPostInput(e.target.value)}
-                placeholder="Напишите пост..."
-                className="telegram-post-input mb-2"
-                disabled={posting}
-              />
-              <Button
-                className="telegram-post-button"
-                onClick={handleCreatePost}
-                disabled={posting || !postInput.trim()}
-              >
-                Опубликовать
-              </Button>
-            </div>
-            <div className="overflow-auto p-3 flex-grow-1">
-              {loading ? (
-                <div>Загрузка...</div>
-              ) : posts.length === 0 ? (
-                <div className="text-muted">У вас нет постов</div>
-              ) : (
-                <ListGroup variant="flush">
-                  {posts.map((post) => (
-                    <ListGroup.Item key={post._id} className="telegram-post-item">
-                      <div className="d-flex align-items-center">
-                        <Image
-                          src={post.avatar || '/default-avatar.png'}
-                          alt={post.username}
-                          className="telegram-post-avatar"
-                          roundedCircle
-                        />
-                        <div>
-                          <div className="fw-bold">{post.username}</div>
-                          <div className="text-muted small">
-                            {new Date(post.createdAt).toLocaleString()}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="mt-2">{post.content}</div>
-                    </ListGroup.Item>
-                  ))}
-                </ListGroup>
-              )}
-            </div>
-          </Col>
-        </Row>
-      </Container>
-    </>
+                </Form>
+              </div>
+            )}
+          </div>
+        </Col>
+      </Row>
+    </Container>
   );
 }

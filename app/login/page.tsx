@@ -3,13 +3,14 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Form, Button, Alert, Container } from 'react-bootstrap';
-
+import { useAuth } from '@/lib/ClientAuthProvider';
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const router = useRouter();
+  const { logout } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,14 +35,11 @@ export default function LoginPage() {
 
       const data = await res.json();
       console.log('Login: Вход успешен:', data);
-
-      // Store token and username in localStorage
       localStorage.setItem('authToken', data.token);
       localStorage.setItem('username', data.username);
-
-      // Redirect to /chat
-      router.push('/chat');
-      router.refresh(); // Force refresh to update auth state
+      await logout(); // Сбрасываем текущее состояние
+      router.push('/');
+      router.refresh();
     } catch (err: any) {
       console.error('Login: Ошибка входа:', err.message);
       setError(err.message);
@@ -53,7 +51,6 @@ export default function LoginPage() {
   return (
     <Container className="mt-5">
       <h2>Вход</h2>
-      {error && <Alert variant="danger">{error}</Alert>}
       <Form onSubmit={handleSubmit}>
         <Form.Group className="mb-3">
           <Form.Label>Email</Form.Label>
@@ -75,6 +72,7 @@ export default function LoginPage() {
             disabled={submitting}
           />
         </Form.Group>
+        {error && <Alert variant="danger">{error}</Alert>}
         <Button variant="primary" type="submit" disabled={submitting}>
           {submitting ? 'Вход...' : 'Войти'}
         </Button>
