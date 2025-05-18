@@ -1,15 +1,35 @@
-import mongoose from 'mongoose';
+import mongoose, { Schema, Document } from 'mongoose';
 
-const MessageSchema = new mongoose.Schema({
-  chatId: { type: mongoose.Schema.Types.ObjectId, ref: 'Chat' }, // Без required
-  recipientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+// Интерфейс для документа Message
+interface IMessage extends Document {
+  senderId: string;
+  recipientId: string;
+  content: string;
+  createdAt: Date;
+  isRead: boolean;
+  readBy: string[];
+  __v?: number;
+}
+
+// Интерфейс для lean-версии Message
+export interface LeanMessage {
+  _id: string;
+  senderId: string;
+  recipientId: string;
+  content: string;
+  createdAt: Date;
+  isRead: boolean;
+  readBy: string[];
+  __v?: number;
+}
+
+const MessageSchema = new Schema<IMessage>({
+  senderId: { type: String, required: true },
+  recipientId: { type: String, required: true },
   content: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
   isRead: { type: Boolean, default: false },
-  readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  readBy: [{ type: String }],
 });
 
-console.log('MessageSchema: Модель создана, chatId required:', MessageSchema.path('chatId').isRequired);
-
-export default mongoose.models.Message || mongoose.model('Message', MessageSchema);
+export default mongoose.models.Message || mongoose.model<IMessage>('Message', MessageSchema);

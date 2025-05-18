@@ -1,145 +1,77 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
-import Message from '@/models/Message';
-
-interface IMessage {
-  _id: string;
-  senderId: string;
-  recipientId?: string;
-  chatId?: string;
-  content: string;
-  createdAt: Date;
-  isRead: boolean;
-  readBy: string[];
-}
+import Message from '../../../models/Message';
+import { Types } from 'mongoose';
 
 export async function GET(request: Request) {
   console.time('GET /api/messages: Total');
-  console.log('GET /api/messages: Запрос получен:', request.url);
   try {
     await dbConnect();
-    console.log('GET /api/messages: MongoDB подключен');
-
     const { searchParams } = new URL(request.url);
-    const chatId = searchParams.get('chatId');
+    const userId = request.headers.get('x-user-id');
     const recipientId = searchParams.get('recipientId');
-    const userId = request.headers.get('x-user-id')?.trim();
 
-    console.log('GET /api/messages: Параметры:', { chatId, recipientId, userId });
-
-    if (!userId) {
-      console.log('GET /api/messages: Отсутствует userId');
-      return NextResponse.json({ error: 'Требуется userId' }, { status: 400 });
+    if (!userId || !recipientId) {
+      return NextResponse.json({ error: 'Требуется userId и recipientId' }, { status: 400 });
     }
 
-    let query: any = {};
-    if (chatId) {
-      query.chatId = chatId;
-    } else if (recipientId) {
-      query.$or = [
+    console.log('GET /api/messages: Параметры:', { userId, recipientId });
+
+    const messages = await Message.find({
+      $or: [
         { senderId: userId, recipientId },
         { senderId: recipientId, recipientId: userId },
-      ];
-    } else {
-      console.log('GET /api/messages: Отсутствуют chatId или recipientId');
-      return NextResponse.json({ error: 'Требуются chatId или recipientId' }, { status: 400 });
-    }
-
-    const messages = await Message.find(query)
+      ],
+    })
       .sort({ createdAt: 1 })
-      .lean()
-      .exec() as unknown as IMessage[];
-    console.log('GET /api/messages: Найдено сообщений:', messages.length);
-    console.log('GET /api/messages: Данные:', messages);
+      .lean();
+
+    console.log('GET /api/messages: Найдены сообщения:', messages.length);
+
+    // Обновляем isRead и readBy для входящих сообщений
+    await Message.updateMany(
+      { senderId: recipientId, recipientId: userId, isRead: false },
+      { $set: { isRead: true }, $addToSet: { readBy: userId } }
+    );
 
     console.timeEnd('GET /api/messages: Total');
     return NextResponse.json(messages, { status: 200 });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-    console.error('GET /api/messages: Ошибка:', errorMessage, error);
+    console.error('GET /api/messages: Ошибка:', errorMessage);
     console.timeEnd('GET /api/messages: Total');
-    return NextResponse.json({ error: 'Не удалось загрузить сообщения', details: errorMessage }, { status: 500 });
+    return NextResponse.json({ error: 'Ошибка загрузки сообщений', details: errorMessage }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
   console.time('POST /api/messages: Total');
-  console.log('POST /api/messages: Запрос получен:', request.url);
   try {
     await dbConnect();
-    console.log('POST /api/messages: MongoDB подключен');
+    const userId = request.headers.get('x-user-id');
+    const { recipientId, content } = await request.json();
 
-    const body = await request.json();
-    console.log('POST /api/messages: Тело запроса:', body);
-    const { chatId, recipientId, content } = body;
-    const userId = request.headers.get('x-user-id')?.trim();
-    console.log('POST /api/messages: Извлечённые данные:', { chatId, recipientId, content, userId });
-
-    if (!userId || !content) {
-      console.log('POST /api/messages: Отсутствуют обязательные поля userId или content');
-      return NextResponse.json({ error: 'Отсутствуют обязательные поля userId или content' }, { status: 400 });
+    if (!userId || !recipientId || !content) {
+      return NextResponse.json({ error: 'Требуется userId, recipientId и content' }, { status: 400 });
     }
 
-    console.log('POST /api/messages: Создание сообщения с:', { chatId, recipientId, senderId: userId, content });
-    const message = new Message({
-      chatId,
-      recipientId,
+    console.log('POST /api/messages: Параметры:', { userId, recipientId, content });
+
+    const message = await Message.create({
       senderId: userId,
+      recipientId,
       content,
-      createdAt: new Date(),
       isRead: false,
       readBy: [],
     });
 
-    console.log('POST /api/messages: Сообщение перед сохранением:', message.toObject());
-    await message.save();
-    console.log('POST /api/messages: Сообщение успешно сохранено:', message.toObject());
+    console.log('POST /api/messages: Сообщение создано:', message);
     console.timeEnd('POST /api/messages: Total');
     return NextResponse.json(message, { status: 201 });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-    console.error('POST /api/messages: Ошибка при сохранении:', errorMessage, error);
+    console.error('POST /api/messages: Ошибка:', errorMessage);
     console.timeEnd('POST /api/messages: Total');
-    return NextResponse.json({ error: 'Не удалось отправить сообщение', details: errorMessage }, { status: 500 });
-  }
-}
-
-export async function PATCH(request: Request) {
-  console.time('PATCH /api/messages: Total');
-  console.log('PATCH /api/messages: Запрос получен:', request.url);
-  try {
-    await dbConnect();
-    console.log('PATCH /api/messages: MongoDB подключен');
-
-    const { searchParams } = new URL(request.url);
-    const messageId = searchParams.get('messageId');
-    const userId = request.headers.get('x-user-id')?.trim();
-    console.log('PATCH /api/messages: Параметры:', { messageId, userId });
-
-    if (!messageId || !userId) {
-      console.log('PATCH /api/messages: Отсутствуют параметры');
-      return NextResponse.json({ error: 'Требуются messageId и userId' }, { status: 400 });
-    }
-
-    const message = await Message.findById(messageId);
-    if (!message) {
-      console.log('PATCH /api/messages: Сообщение не найдено');
-      return NextResponse.json({ error: 'Сообщение не найдено' }, { status: 404 });
-    }
-
-    message.isRead = true;
-    if (!message.readBy.includes(userId)) {
-      message.readBy.push(userId);
-    }
-
-    await message.save();
-    console.log('PATCH /api/messages: Сообщение обновлено:', message.toObject());
-    console.timeEnd('PATCH /api/messages: Total');
-    return NextResponse.json(message, { status: 200 });
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-    console.error('PATCH /api/messages: Ошибка при обновлении:', errorMessage, error);
-    console.timeEnd('PATCH /api/messages: Total');
-    return NextResponse.json({ error: 'Не удалось обновить сообщение', details: errorMessage }, { status: 500 });
+    return NextResponse.json({ error: 'Ошибка отправки сообщения', details: errorMessage }, { status: 500 });
   }
 }

@@ -1,80 +1,81 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Post from '@/models/Post';
-import User from '@/models/User';
-import mongoose from 'mongoose';
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
+  console.time('PUT /api/posts/[id]: Total');
+  console.log('PUT /api/posts/[id]: Запрос получен, id:', params.id);
   try {
-    console.log('PUT /api/posts/[id]: Connecting to MongoDB...');
     await dbConnect();
-    console.log('PUT /api/posts/[id]: MongoDB connected');
+    console.log('PUT /api/posts/[id]: MongoDB подключен');
 
-    const postId = params.id;
-    const { content, images, userId } = await request.json();
-    console.log('PUT /api/posts/[id] received:', { postId, content, images, userId });
+    const userId = request.headers.get('x-user-id');
+    const { content } = await request.json();
 
-    if (!mongoose.Types.ObjectId.isValid(postId)) {
-      return NextResponse.json({ error: 'Invalid post ID' }, { status: 400 });
+    if (!userId) {
+      console.log('PUT /api/posts/[id]: Отсутствует x-user-id');
+      return NextResponse.json({ error: 'Требуется userId' }, { status: 400 });
     }
 
-    const post = await Post.findById(postId);
+    if (!content || typeof content !== 'string') {
+      console.log('PUT /api/posts/[id]: Отсутствует или некорректный content');
+      return NextResponse.json({ error: 'Требуется content' }, { status: 400 });
+    }
+
+    console.log('PUT /api/posts/[id]: Параметры:', { userId, content });
+
+    const post = await Post.findOne({ _id: params.id, userId });
     if (!post) {
-      return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+      console.log('PUT /api/posts/[id]: Пост не найден или не принадлежит пользователю');
+      return NextResponse.json({ error: 'Пост не найден' }, { status: 404 });
     }
 
-    if (post.user.toString() !== userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-    }
-
-    if (content) post.content = content;
-    if (images) post.images = images;
-
+    post.content = content;
+    post.updatedAt = new Date();
     await post.save();
-    await post.populate({
-      path: 'user',
-      select: 'username avatar',
-      options: { strictPopulate: false },
-    });
 
-    console.log('PUT /api/posts/[id]: Updated post:', post);
-    return NextResponse.json(post);
+    console.log('PUT /api/posts/[id]: Пост обновлен:', post);
+    console.timeEnd('PUT /api/posts/[id]: Total');
+    return NextResponse.json(post, { status: 200 });
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('PUT /api/posts/[id] error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+    console.error('PUT /api/posts/[id]: Ошибка:', errorMessage, error);
+    console.timeEnd('PUT /api/posts/[id]: Total');
     return NextResponse.json({ error: 'Failed to update post', details: errorMessage }, { status: 500 });
   }
 }
 
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+  console.time('DELETE /api/posts/[id]: Total');
+  console.log('DELETE /api/posts/[id]: Запрос получен, id:', params.id);
   try {
-    console.log('DELETE /api/posts/[id]: Connecting to MongoDB...');
     await dbConnect();
-    console.log('DELETE /api/posts/[id]: MongoDB connected');
+    console.log('DELETE /api/posts/[id]: MongoDB подключен');
 
-    const postId = params.id;
     const userId = request.headers.get('x-user-id');
-    console.log('DELETE /api/posts/[id] received:', { postId, userId });
 
-    if (!mongoose.Types.ObjectId.isValid(postId)) {
-      return NextResponse.json({ error: 'Invalid post ID' }, { status: 400 });
+    if (!userId) {
+      console.log('DELETE /api/posts/[id]: Отсутствует x-user-id');
+      return NextResponse.json({ error: 'Требуется userId' }, { status: 400 });
     }
 
-    const post = await Post.findById(postId);
+    console.log('DELETE /api/posts/[id]: Параметры:', { userId });
+
+    const post = await Post.findOne({ _id: params.id, userId });
     if (!post) {
-      return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+      console.log('DELETE /api/posts/[id]: Пост не найден или не принадлежит пользователю');
+      return NextResponse.json({ error: 'Пост не найден' }, { status: 404 });
     }
 
-    if (post.user.toString() !== userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-    }
+    await Post.deleteOne({ _id: params.id, userId });
 
-    await post.deleteOne();
-    console.log('DELETE /api/posts/[id]: Deleted post:', postId);
-    return NextResponse.json({ message: 'Post deleted' });
+    console.log('DELETE /api/posts/[id]: Пост удален');
+    console.timeEnd('DELETE /api/posts/[id]: Total');
+    return NextResponse.json({ message: 'Пост удален' }, { status: 200 });
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('DELETE /api/posts/[id] error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+    console.error('DELETE /api/posts/[id]: Ошибка:', errorMessage, error);
+    console.timeEnd('DELETE /api/posts/[id]: Total');
     return NextResponse.json({ error: 'Failed to delete post', details: errorMessage }, { status: 500 });
   }
 }

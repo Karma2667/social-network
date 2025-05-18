@@ -4,13 +4,13 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Form, Button, Alert, Container } from 'react-bootstrap';
 import { useAuth } from '@/lib/ClientAuthProvider';
+
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const router = useRouter();
-  const { logout } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +37,6 @@ export default function LoginPage() {
       console.log('Login: Вход успешен:', data);
       localStorage.setItem('authToken', data.token);
       localStorage.setItem('username', data.username);
-      await logout(); // Сбрасываем текущее состояние
       router.push('/');
       router.refresh();
     } catch (err: any) {

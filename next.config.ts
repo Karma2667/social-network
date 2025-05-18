@@ -1,14 +1,17 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: false, // Отключаем Strict Mode
-  experimental: {
-    optimizeCss: false, // Отключаем preload для CSS
-  },
-  logging: {
-    fetches: {
-      fullUrl: true, // Логируем полные URL запросов
-    },
+  async headers() {
+    return [
+      {
+        source: '/api/:path*',
+        headers: [
+          { key: 'Access-Control-Allow-Origin', value: '*' },
+          { key: 'Access-Control-Allow-Methods', value: 'GET, POST, PUT, DELETE, OPTIONS' },
+          { key: 'Access-Control-Allow-Headers', value: 'x-user-id, Content-Type, Authorization' },
+        ],
+      },
+    ];
   },
 };
 
-export default nextConfig;
+module.exports = nextConfig;

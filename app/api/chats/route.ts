@@ -1,83 +1,122 @@
 import { NextResponse } from 'next/server';
+import { Types } from 'mongoose';
 import dbConnect from '@/lib/mongodb';
-import Chat from '@/models/Chat';
+import Message, { LeanMessage } from '@/models/Message';
+import User, { LeanUser } from '@/models/User';
 
-interface IChat {
-  _id: string;
-  name: string;
-  members: string[];
-  avatar: string;
+// Интерфейс для сырых данных от lean()
+interface RawUser {
+  _id: Types.ObjectId | string;
+  username: string;
+  name?: string;
+}
+
+// Интерфейс для объекта чата
+interface Chat {
+  user: {
+    _id: string;
+    username: string;
+    name: string;
+  };
+  lastMessage: {
+    _id: string;
+    content: string;
+    createdAt: Date;
+  } | null;
 }
 
 export async function GET(request: Request) {
   console.time('GET /api/chats: Total');
-  console.log('GET /api/chats: Запрос получен:', request.url);
+  console.log('GET /api/chats: Запрос получен');
   try {
     await dbConnect();
     console.log('GET /api/chats: MongoDB подключен');
 
     const { searchParams } = new URL(request.url);
+    const userId = request.headers.get('x-user-id');
     const search = searchParams.get('search') || '';
-    const userId = request.headers.get('x-user-id')?.trim();
-    console.log('GET /api/chats: Параметры:', { search, userId });
 
     if (!userId) {
-      console.log('GET /api/chats: Отсутствует userId');
+      console.log('GET /api/chats: Отсутствует x-user-id');
       return NextResponse.json({ error: 'Требуется userId' }, { status: 400 });
     }
 
-    const query: any = { members: { $in: [userId] } };
-    if (search) {
-      query.name = { $regex: search, $options: 'i' };
-    }
-    console.log('GET /api/chats: Сформирован запрос:', JSON.stringify(query));
+    console.log('GET /api/chats: Параметры:', { userId, search });
 
-    const chats = await Chat.find(query)
-      .select('name _id avatar')
-      .lean()
-      .exec() as unknown as IChat[];
-    console.log('GET /api/chats: Найдено чатов:', chats.length);
-    console.log('GET /api/chats: Данные:', chats);
+    // Находим все сообщения, где userId является отправителем или получателем
+    const messages = await Message.find({
+      $or: [
+        { senderId: userId },
+        { recipientId: userId },
+      ],
+    })
+      .sort({ createdAt: -1 })
+      .lean() as LeanMessage[];
 
+    console.log('GET /api/chats: Найдены сообщения:', messages.length, messages);
+
+    // Собираем уникальные userId из сообщений (кроме текущего пользователя)
+    const chatUserIds = Array.from(
+      new Set(
+        messages
+          .map((msg) =>
+            msg.senderId.toString() === userId ? msg.recipientId.toString() : msg.senderId.toString()
+          )
+          .filter((id) => id !== userId)
+      )
+    );
+
+    console.log('GET /api/chats: Найдены chatUserIds:', chatUserIds);
+
+    // Находим пользователей по chatUserIds с учетом поиска
+    const rawUsers = await User.find({
+      _id: { $in: chatUserIds.map((id) => new Types.ObjectId(id)) },
+      username: { $regex: search, $options: 'i' },
+    })
+      .select('_id username name')
+      .lean() as unknown as RawUser[];
+
+    console.log('GET /api/chats: Сырые пользователи:', rawUsers);
+
+    // Преобразуем rawUsers в LeanUser
+    const users: LeanUser[] = rawUsers.map((user) => ({
+      _id: user._id.toString(),
+      username: user.username,
+      name: user.name || '',
+    }));
+
+    console.log('GET /api/chats: Найдены пользователи:', users);
+
+    // Формируем список чатов
+    const chats: Chat[] = users.map((user) => {
+      const lastMessage = messages.find(
+        (msg) =>
+          (msg.senderId.toString() === userId && msg.recipientId.toString() === user._id.toString()) ||
+          (msg.senderId.toString() === user._id.toString() && msg.recipientId.toString() === userId)
+      );
+      return {
+        user: {
+          _id: user._id.toString(),
+          username: user.username,
+          name: user.name || '',
+        },
+        lastMessage: lastMessage
+          ? {
+              _id: lastMessage._id.toString(),
+              content: lastMessage.content,
+              createdAt: lastMessage.createdAt,
+            }
+          : null,
+      };
+    });
+
+    console.log('GET /api/chats: Чаты сформированы:', chats);
     console.timeEnd('GET /api/chats: Total');
     return NextResponse.json(chats, { status: 200 });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-    console.error('GET /api/chats ошибка:', errorMessage);
+    console.error('GET /api/chats: Ошибка:', errorMessage, error);
     console.timeEnd('GET /api/chats: Total');
-    return NextResponse.json({ error: 'Не удалось загрузить чаты', details: errorMessage }, { status: 500 });
-  }
-}
-
-export async function POST(request: Request) {
-  console.time('POST /api/chats: Total');
-  console.log('POST /api/chats: Запрос получен:', request.url);
-  try {
-    await dbConnect();
-    console.log('POST /api/chats: MongoDB подключен');
-
-    const { name, members, userId } = await request.json();
-    console.log('POST /api/chats получено:', { name, members, userId });
-
-    if (!name || !userId || !members || !Array.isArray(members)) {
-      console.log('POST /api/chats: Отсутствуют поля');
-      return NextResponse.json({ error: 'Отсутствуют обязательные поля' }, { status: 400 });
-    }
-
-    const chat = new Chat({
-      name,
-      members: [userId, ...members],
-      avatar: '/default-chat-avatar.png',
-    });
-
-    await chat.save();
-    console.log('POST /api/chats: Создан чат:', chat.toObject());
-    console.timeEnd('POST /api/chats: Total');
-    return NextResponse.json(chat, { status: 201 });
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-    console.error('POST /api/chats ошибка:', errorMessage);
-    console.timeEnd('POST /api/chats: Total');
-    return NextResponse.json({ error: 'Не удалось создать чат', details: errorMessage }, { status: 500 });
+    return NextResponse.json({ error: 'Ошибка загрузки чатов', details: errorMessage }, { status: 500 });
   }
 }

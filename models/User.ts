@@ -1,35 +1,29 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
-export interface IUser extends Document {
+// Интерфейс для документа User
+interface IUser extends Document {
   username: string;
+  name?: string;
   email: string;
   password: string;
-  name: string;
-  bio: string;
-  avatar: string;
+  bio?: string;
   createdAt: Date;
 }
 
-const UserSchema: Schema = new mongoose.Schema({
-  username: {
-    type: String,
-    required: true,
-    unique: true,
-    trim: true,
-    minlength: 3,
-    maxlength: 20,
-  },
-  email: { type: String, required: true, unique: true, trim: true },
+// Интерфейс для lean-версии User
+export interface LeanUser {
+  _id: string;
+  username: string;
+  name?: string;
+}
+
+const UserSchema = new Schema<IUser>({
+  username: { type: String, required: true, unique: true },
+  name: { type: String },
+  email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  name: { type: String, default: '', trim: true },
-  bio: { type: String, default: '', trim: true },
-  avatar: { type: String, default: '/default-avatar.png' },
+  bio: { type: String },
   createdAt: { type: Date, default: Date.now },
 });
-
-// Создание индекса для username
-UserSchema.index({ username: 1 }, { unique: true });
-
-console.log('UserSchema: Модель создана, username unique:', UserSchema.path('username').options.unique);
 
 export default mongoose.models.User || mongoose.model<IUser>('User', UserSchema);

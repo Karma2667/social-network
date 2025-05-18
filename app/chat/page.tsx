@@ -1,29 +1,49 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/lib/ClientAuthProvider';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Container, Row, Col, Form, ListGroup, Button, FormControl } from 'react-bootstrap';
+import { Container, Row, Col, Form, ListGroup, Button, FormControl, Alert } from 'react-bootstrap';
 import Link from 'next/link';
 
 function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; currentUserId: string }) {
   const [messages, setMessages] = useState<any[]>([]);
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const fetchMessages = useCallback(async (retryCount = 3) => {
     if (!chatUserId) return;
     console.log('ChatArea: Загрузка сообщений для chatUserId:', chatUserId);
-    fetch(`/api/messages?recipientId=${chatUserId}`, {
-      headers: { 'x-user-id': currentUserId },
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        console.log('ChatArea: Сообщения загружены:', data);
-        setMessages(data);
-      })
-      .catch((err) => console.error('ChatArea: Ошибка загрузки сообщений:', err.message));
+    try {
+      const res = await fetch(`/api/messages?recipientId=${encodeURIComponent(chatUserId)}`, {
+        headers: {
+          'x-user-id': currentUserId,
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+        cache: 'no-store',
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ошибка ${res.status}: ${res.statusText}`);
+      }
+      const data = await res.json();
+      console.log('ChatArea: Сообщения загружены:', data);
+      setMessages(data);
+      setError(null);
+    } catch (err: any) {
+      console.error('ChatArea: Ошибка загрузки сообщений:', err.message);
+      if (retryCount > 0) {
+        console.log(`ChatArea: Повторная попытка (${retryCount} осталось)`);
+        setTimeout(() => fetchMessages(retryCount - 1), 1000);
+      } else {
+        setError('Не удалось загрузить сообщения. Проверьте подключение к сети.');
+      }
+    }
   }, [chatUserId, currentUserId]);
+
+  useEffect(() => {
+    fetchMessages();
+  }, [fetchMessages]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,6 +56,7 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': currentUserId,
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
         },
         body: JSON.stringify({ recipientId: chatUserId, content: message }),
       });
@@ -46,6 +67,7 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
       setMessage('');
     } catch (err: any) {
       console.error('ChatArea: Ошибка отправки:', err.message);
+      setError('Не удалось отправить сообщение.');
     } finally {
       setSubmitting(false);
     }
@@ -57,16 +79,22 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
 
   return (
     <div className="p-3" style={{ height: 'calc(100vh - 56px)', display: 'flex', flexDirection: 'column' }}>
+      {error && <Alert variant="danger">{error}</Alert>}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {messages.map((msg) => (
           <div
             key={msg._id}
-            className={`mb-2 ${msg.senderId === currentUserId ? 'text-end' : 'text-start'}`}
+            className={`mb-3 ${msg.senderId === currentUserId ? 'text-end' : 'text-start'}`}
           >
             <span
               className={`p-2 rounded ${msg.senderId === currentUserId ? 'bg-primary text-white' : 'bg-light'}`}
             >
               {msg.content}
+              {msg.senderId === currentUserId && (
+                <span className="ms-2 small text-muted">
+                  {msg.isRead ? '✓✓' : '✓'}
+                </span>
+              )}
             </span>
           </div>
         ))}
@@ -95,7 +123,10 @@ export default function ChatPage() {
   const [chats, setChats] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [isDesktop, setIsDesktop] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const selectedChatUserId = searchParams.get('chat');
+  const fetchChatsRef = useRef(false);
+  const lastFetchTime = useRef(0);
 
   console.log('ChatPage: Инициализация, userId:', userId, 'isInitialized:', isInitialized, 'username:', username, 'selectedChatUserId:', selectedChatUserId);
 
@@ -110,6 +141,44 @@ export default function ChatPage() {
     return () => window.removeEventListener('resize', checkDesktop);
   }, []);
 
+  const fetchChats = useCallback(async (retryCount = 3) => {
+    if (!userId || !isInitialized || fetchChatsRef.current) return;
+    const now = Date.now();
+    if (now - lastFetchTime.current < 1000) return; // Дебаунсинг 1 сек
+    fetchChatsRef.current = true;
+    lastFetchTime.current = now;
+    console.log('ChatPage: Загрузка чатов для userId:', userId);
+    try {
+      const res = await fetch(`/api/chats?search=${encodeURIComponent(search)}`, {
+        headers: {
+          'x-user-id': userId,
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+        cache: 'no-store',
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ошибка ${res.status}: ${res.statusText}`);
+      }
+      const data = await res.json();
+      console.log('ChatPage: Чаты загружены:', data);
+      setChats(data);
+      setError(null);
+    } catch (err: any) {
+      console.error('ChatPage: Ошибка загрузки чатов:', err.message);
+      if (retryCount > 0) {
+        console.log(`ChatPage: Повторная попытка (${retryCount} осталось)`);
+        setTimeout(() => {
+          fetchChatsRef.current = false;
+          fetchChats(retryCount - 1);
+        }, 1000);
+      } else {
+        setError('Не удалось загрузить чаты. Проверьте подключение к сети.');
+      }
+    } finally {
+      fetchChatsRef.current = false;
+    }
+  }, [userId, isInitialized, search]);
+
   useEffect(() => {
     if (!isInitialized) {
       console.log('ChatPage: Ожидание инициализации');
@@ -120,17 +189,10 @@ export default function ChatPage() {
       router.replace('/login');
       return;
     }
-    console.log('ChatPage: Загрузка чатов для userId:', userId);
-    fetch(`/api/chats?search=${encodeURIComponent(search)}`, {
-      headers: { 'x-user-id': userId },
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        console.log('ChatPage: Чаты загружены:', data);
-        setChats(data);
-      })
-      .catch((err) => console.error('ChatPage: Ошибка загрузки чатов:', err.message));
-  }, [userId, isInitialized, search, router]);
+    fetchChats();
+    const interval = setInterval(fetchChats, 5000); // Обновление каждые 5 сек
+    return () => clearInterval(interval);
+  }, [userId, isInitialized, router, fetchChats]);
 
   if (!isInitialized) {
     console.log('ChatPage: Ожидание инициализации');
@@ -148,6 +210,7 @@ export default function ChatPage() {
 
   return (
     <Container fluid className="mt-3">
+      {error && <Alert variant="danger">{error}</Alert>}
       <Row>
         <Col md={4} className="border-end" style={{ backgroundColor: '#f8f9fa', height: 'calc(100vh - 56px)' }}>
           <div className="p-3">
@@ -160,6 +223,7 @@ export default function ChatPage() {
               />
             </Form.Group>
             <ListGroup>
+              {chats.length === 0 && <ListGroup.Item>Нет чатов</ListGroup.Item>}
               {chats.map((chat) => (
                 <ListGroup.Item
                   key={chat.user._id}
