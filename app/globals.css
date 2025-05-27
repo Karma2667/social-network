@@ -9,6 +9,11 @@ body {
   line-height: 1.5;
 }
 
+/* Root HTML */
+.telegram-root {
+  height: 100%;
+}
+
 /* Header */
 .telegram-header {
   background-color: #FFFFFF;
@@ -17,31 +22,204 @@ body {
   top: 0;
   z-index: 1000;
   padding: 10px 15px;
+  min-height: 60px;
+  max-height: 80px;
+}
+
+.telegram-header-nav {
+  padding: 0;
+}
+
+/* Main content */
+.telegram-main {
+  min-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Write button */
+.telegram-write-button {
+  background-color: #0088cc;
+  border: none;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.telegram-write-button:hover {
+  background-color: #006699;
+}
+
+/* Search page */
+.telegram-search-page {
+  background-color: #F5F7FA;
+  min-height: calc(100vh - 80px);
+  padding: 30px 15px;
+}
+
+.telegram-search-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 20px;
+}
+
+.telegram-search-input {
+  border-radius: 25px;
+  border: 1px solid #CED4DA;
+  padding: 10px 20px;
+  font-size: 16px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
+}
+
+.telegram-search-input:focus {
+  border-color: #0088CC;
+  box-shadow: 0 0 0 3px rgba(0, 136, 204, 0.2);
+  outline: none;
+}
+
+.telegram-search-button {
+  border-radius: 25px;
+  padding: 10px 25px;
+  font-size: 16px;
+  background: linear-gradient(135deg, #0088CC, #005BB5);
+  border: none;
+  transition: all 0.3s ease;
+}
+
+.telegram-search-button:hover {
+  background: linear-gradient(135deg, #006699, #003F87);
+}
+
+.telegram-search-no-results {
+  font-size: 16px;
+  text-align: center;
+  padding: 20px;
+}
+
+/* User card */
+.telegram-user-card {
+  border: none;
+  border-radius: 15px;
+  background: #FFFFFF;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  height: 280px;
+  display: flex;
+  flex-direction: column;
+}
+
+.telegram-user-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+}
+
+.telegram-user-card .card-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 1;
+  padding: 20px;
+}
+
+.telegram-user-card-avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center;
+  font-size: 20px;
+  color: #FFF;
+}
+
+.telegram-user-card-username {
+  font-size: 18px;
+  font-weight: 500;
+  color: #0088CC;
+  text-decoration: none;
+}
+
+.telegram-user-card-username:hover {
+  color: #005BB5;
+  text-decoration: underline;
+}
+
+.telegram-user-card-name {
+  font-size: 14px;
+  margin-top: 2px;
+}
+
+.telegram-user-card-bio {
+  font-size: 14px;
+  color: #555;
+  margin-bottom: 10px;
+  flex-grow: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.telegram-user-card-interests {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.telegram-user-card-interest {
+  background-color: #E1F5FE;
+  color: #005BB5;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.telegram-user-card-no-interests {
+  font-size: 12px;
+  color: #6C757D;
+  font-style: italic;
+}
+
+.telegram-user-card-button {
+  border: none;
+  border-radius: 20px;
+  padding: 8px 20px;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  align-self: flex-end;
+  text-decoration: none;
+  color: #FFFFFF;
+  display: inline-block;
+  text-align: center;
+}
+
+.telegram-user-card-button-primary {
+  background: linear-gradient(135deg, #0088CC, #005BB5);
+}
+
+.telegram-user-card-button-primary:hover {
+  background: linear-gradient(135deg, #006699, #003F87);
+}
+
+.telegram-user-card-button-secondary {
+  background: linear-gradient(135deg, #6C757D, #5A6268);
+}
+
+.telegram-user-card-button-secondary:hover {
+  background: linear-gradient(135deg, #5A6268, #495057);
 }
 
 /* Sidebar */
 .telegram-sidebar {
   background-color: #FFFFFF;
   border-right: 1px solid #DEE2E6;
-  height: 100vh;
+  height: calc(100vh - 80px);
   overflow-y: auto;
   padding: 15px;
-}
-
-/* Search input */
-.telegram-search {
-  border-radius: 20px;
-  border: 1px solid #CED4DA;
-  padding: 8px 15px;
-  width: 100%;
-  font-size: 14px;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.telegram-search:focus {
-  border-color: #0088CC;
-  box-shadow: 0 0 0 2px rgba(0, 136, 204, 0.2);
-  outline: none;
 }
 
 /* Chat/User list item */
@@ -85,7 +263,7 @@ body {
 /* Chat area */
 .telegram-chat {
   background-color: #F5F7FA;
-  height: 100vh;
+  height: calc(100vh - 80px);
   display: flex;
   flex-direction: column;
 }
@@ -198,7 +376,7 @@ body {
 /* Posts area */
 .telegram-posts {
   background-color: #F5F7FA;
-  height: 100vh;
+  height: calc(100vh - 80px);
   display: flex;
   flex-direction: column;
   padding: 15px;
@@ -251,44 +429,76 @@ body {
 
 /* Profile area */
 .telegram-profile {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 20px;
   background-color: #F5F7FA;
-  height: 100vh;
+  min-height: calc(100vh - 80px);
+}
+
+.telegram-profile-info {
+  background-color: #FFFFFF;
+  border-radius: 15px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  position: sticky;
+  top: 80px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
 }
 
 .telegram-profile-avatar {
-  width: 80px;
-  height: 80px;
+  width: 120px;
+  height: 120px;
   border-radius: 50%;
   margin-bottom: 15px;
   object-fit: cover;
   object-position: center;
-}
-
-.telegram-profile-info {
-  margin-bottom: 20px;
-  font-size: 16px;
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .telegram-profile-button {
-  background-color: #0088CC;
+  background: linear-gradient(135deg, #0088CC, #005BB5);
   border: none;
   border-radius: 20px;
-  padding: 8px 15px;
-  color: #FFFFFF;
+  padding: 8px 20px;
+  color: #FFFFFF !important; /* Увеличиваем специфичность */
   font-size: 14px;
   width: 100%;
   max-width: 300px;
   margin-bottom: 10px;
-  transition: background-color 0.2s;
+  transition: all 0.3s ease;
+  text-decoration: none;
+  display: inline-block;
+  text-align: center;
+}
+
+/* Сбрасываем стили для <a> внутри кнопки */
+a.telegram-profile-button {
+  color: #FFFFFF !important; /* Принудительно белый цвет */
+  text-decoration: none;
 }
 
 .telegram-profile-button:hover {
-  background-color: #006699;
+  background: linear-gradient(135deg, #006699, #003F87);
+  color: #FFFFFF !important; /* Белый цвет при наведении */
+}
+
+/* Badge for interests */
+.badge {
+  font-size: 12px;
+  padding: 6px 10px;
+  background-color: #E1F5FE;
+  color: #005BB5;
+  border-radius: 12px;
+}
+
+/* Modal */
+.modal-content {
+  border-radius: 10px;
+}
+
+/* Form check */
+.form-check {
+  margin-bottom: 10px;
 }
 
 /* Responsive styles */
@@ -300,14 +510,9 @@ body {
 
   .telegram-chat,
   .telegram-posts,
-  .telegram-profile {
-    display: none;
-  }
-
-  .telegram-chat.active,
-  .telegram-posts.active,
-  .telegram-profile.active {
-    display: flex;
+  .telegram-profile,
+  .telegram-search-page {
+    display: block;
   }
 
   .telegram-message {
@@ -317,4 +522,46 @@ body {
   .telegram-profile {
     padding: 15px;
   }
+
+  .telegram-profile-info {
+    position: static;
+    max-height: none;
+  }
+
+  .telegram-search-page {
+    padding: 20px 10px;
+  }
+
+  .telegram-search-title {
+    font-size: 20px;
+  }
+
+  .telegram-search-input,
+  .telegram-search-button {
+    font-size: 14px;
+    padding: 8px 15px;
+  }
+
+  .telegram-user-card {
+    height: 300px;
+  }
+
+  .telegram-profile-avatar {
+    width: 100px;
+    height: 100px;
+  }
+
+  .telegram-profile-button {
+    max-width: 200px;
+  }
+}
+
+/* Back button in navbar */
+.telegram-header .btn-link {
+  color: #000;
+  text-decoration: none;
+}
+
+.telegram-header .btn-link:hover {
+  color: #005BB5;
 }

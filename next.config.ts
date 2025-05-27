@@ -1,16 +1,16 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  async headers() {
-    return [
-      {
-        source: '/api/:path*',
-        headers: [
-          { key: 'Access-Control-Allow-Origin', value: '*' },
-          { key: 'Access-Control-Allow-Methods', value: 'GET, POST, PUT, DELETE, OPTIONS' },
-          { key: 'Access-Control-Allow-Headers', value: 'x-user-id, Content-Type, Authorization' },
-        ],
-      },
-    ];
+  reactStrictMode: true,
+  experimental: {
+    appDir: true,
+  },
+  env: {
+    MONGODB_URI: process.env.MONGODB_URI,
+  },
+  productionBrowserSourceMaps: false, // Отключаем source maps в продакшене
+  devIndicators: {
+    buildActivity: true,
+    buildActivityPosition: 'bottom-right',
   },
 };
 

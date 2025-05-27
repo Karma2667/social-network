@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Form, Button } from 'react-bootstrap';
-import { useAuth } from '@/lib/AuthContext';
+import { useAuth } from '@/app/lib/AuthContext';
 
 interface Message {
   _id: string;

@@ -9,6 +9,7 @@ interface RawUser {
   _id: Types.ObjectId | string;
   username: string;
   name?: string;
+  interests?: string[];
 }
 
 // Интерфейс для объекта чата
@@ -17,6 +18,7 @@ interface Chat {
     _id: string;
     username: string;
     name: string;
+    interests?: string[];
   };
   lastMessage: {
     _id: string;
@@ -73,7 +75,7 @@ export async function GET(request: Request) {
       _id: { $in: chatUserIds.map((id) => new Types.ObjectId(id)) },
       username: { $regex: search, $options: 'i' },
     })
-      .select('_id username name')
+      .select('_id username name interests') // Добавлено interests
       .lean() as unknown as RawUser[];
 
     console.log('GET /api/chats: Сырые пользователи:', rawUsers);
@@ -83,6 +85,7 @@ export async function GET(request: Request) {
       _id: user._id.toString(),
       username: user.username,
       name: user.name || '',
+      interests: user.interests || [], // Устанавливаем пустой массив, если interests отсутствует
     }));
 
     console.log('GET /api/chats: Найдены пользователи:', users);
@@ -99,6 +102,7 @@ export async function GET(request: Request) {
           _id: user._id.toString(),
           username: user.username,
           name: user.name || '',
+          interests: user.interests || [], // Передаем interests
         },
         lastMessage: lastMessage
           ? {

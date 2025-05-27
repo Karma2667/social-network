@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Container, Row, Col, Form, Button } from 'react-bootstrap';
 import Post from '@/app/Components/Post';
 import AppNavbar from '@/app/Components/Navbar';
-import { useAuth } from '@/lib/AuthContext';
+import { useAuth } from '@/app/lib/AuthContext';
 import { use } from 'react';
 
 interface PostData {

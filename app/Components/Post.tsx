@@ -2,12 +2,12 @@
 
 import { useState } from 'react';
 import { Card, Button, Form, Image } from 'react-bootstrap';
-import { useAuth } from '@/lib/AuthContext';
+import { useAuth } from '@/app/lib/AuthContext';
 
 interface PostProps {
   username: string;
   content: string;
-  createdAt: string | number;
+  createdAt: string | number; // Оставляем как есть
   userId: string;
   likes: string[];
   images: string[];
@@ -110,9 +110,14 @@ export default function Post({
   };
 
   // Используем userAvatar, если он не пустой и не дефолтный
-  const avatarUrl = userAvatar && userAvatar.trim() && userAvatar !== '/default-avatar.png' 
-    ? userAvatar 
+  const avatarUrl = userAvatar && userAvatar.trim() && userAvatar !== '/default-avatar.png'
+    ? userAvatar
     : '/default-avatar.png';
+
+  // Обработка createdAt для корректного формата
+  const formattedDate = typeof createdAt === 'number'
+    ? new Date(createdAt).toLocaleString()
+    : new Date(createdAt).toLocaleString();
 
   return (
     <Card className="mb-3">
@@ -132,7 +137,7 @@ export default function Post({
           <div>
             <Card.Title>{username}</Card.Title>
             <Card.Subtitle className="text-muted">
-              {new Date(createdAt).toLocaleString()}
+              {formattedDate}
             </Card.Subtitle>
           </div>
         </div>

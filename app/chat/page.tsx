@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useAuth } from '@/lib/ClientAuthProvider';
+import { useAuth } from '@/app/lib/ClientAuthProvider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Container, Row, Col, Form, ListGroup, Button, FormControl, Alert } from 'react-bootstrap';
 import Link from 'next/link';

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Container, ListGroup, Button, Form } from 'react-bootstrap';
 import AppNavbar from '@/app/Components/Navbar';
-import { useAuth } from '@/lib/AuthContext';
+import { useAuth } from '@/app/lib/AuthContext';
 import Link from 'next/link';
 
 export default function Communities() {

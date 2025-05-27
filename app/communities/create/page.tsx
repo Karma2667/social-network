@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { Container, Row, Col, Form, Button } from 'react-bootstrap';
-import { useAuth } from '@/lib/AuthContext';
+import { useAuth } from '@/app/lib/AuthContext';
 import AppNavbar from '@/app/Components/Navbar';
 import { useRouter } from 'next/navigation';
 

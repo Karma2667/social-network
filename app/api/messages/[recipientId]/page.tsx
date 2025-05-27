@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { Button, Form } from 'react-bootstrap';
-import { useAuth } from '@/lib/AuthContext';
+import { useAuth } from '@/app/lib/AuthContext';
 
 export default function CommunityPage({ params }: { params: { id: string } }) {
   const { userId } = useAuth();

@@ -1,25 +1,25 @@
 import './globals.css';
-import 'bootstrap/dist/css/bootstrap.min.css';
-import ClientAuthProvider from '@/lib/ClientAuthProvider';
+import { ReactNode } from 'react';
 import Navbar from '@/app/Components/Navbar';
+import ClientAuthProvider from '@/app/lib/ClientAuthProvider';
 import { Container } from 'react-bootstrap';
+import 'bootstrap/dist/css/bootstrap.min.css';
 
 export const metadata = {
-  title: 'Social Network',
-  description: 'A Telegram-like social network',
+  title: 'Социальная сеть',
+  description: 'Telegram-подобная социальная сеть',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   console.log('RootLayout: Рендеринг начат');
   return (
-    <html lang="ru" suppressHydrationWarning>
-      <head>
-        <link rel="stylesheet" href="/_next/static/css/app/layout.css" />
-      </head>
+    <html lang="ru" className="telegram-root" suppressHydrationWarning>
       <body>
         <ClientAuthProvider>
-          <Navbar />
-          <Container fluid className="p-0">
+          <div className="telegram-header">
+            <Navbar />
+          </div>
+          <Container fluid className="telegram-main p-0">
             {children}
           </Container>
         </ClientAuthProvider>
