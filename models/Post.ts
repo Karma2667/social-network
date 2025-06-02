@@ -5,6 +5,8 @@ const PostSchema = new mongoose.Schema({
   content: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date },
+  images: { type: [String], default: [] },
+  likes: { type: [String], default: [] }, // Добавляем поле likes
 });
 
 console.log('PostSchema: Модель создана');

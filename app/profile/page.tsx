@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/app/lib/AuthContext';
-import { Container, Row, Col, Form, Button, Alert, ListGroup, Modal, FormCheck, Image } from 'react-bootstrap';
+import { Container, Row, Col, Form, Button, Alert, Modal, FormCheck, Image } from 'react-bootstrap';
+import Post from '@/app/Components/Post';
+import { Paperclip } from 'react-bootstrap-icons';
 
 interface ProfileData {
   _id: string;
@@ -11,6 +13,17 @@ interface ProfileData {
   username: string;
   bio: string;
   interests: string[];
+}
+
+interface PostData {
+  _id: string;
+  userId: string;
+  username: string;
+  content: string;
+  images: string[];
+  likes: string[];
+  createdAt: string;
+  userAvatar?: string;
 }
 
 const PREDEFINED_INTERESTS = [
@@ -28,12 +41,13 @@ const PREDEFINED_INTERESTS = [
 
 export default function ProfilePage() {
   const { id: profileId } = useParams();
-  const { user, isInitialized } = useAuth();
+  const { user, isInitialized, username: currentUsername } = useAuth();
   const router = useRouter();
   const [isDesktop, setIsDesktop] = useState(true);
   const [profile, setProfile] = useState<ProfileData | null>(null);
-  const [posts, setPosts] = useState<any[]>([]);
+  const [posts, setPosts] = useState<PostData[]>([]);
   const [postContent, setPostContent] = useState('');
+  const [postImages, setPostImages] = useState<File[]>([]);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -43,6 +57,7 @@ export default function ProfilePage() {
   const [friendStatus, setFriendStatus] = useState<'none' | 'pending' | 'friends'>('none');
   const [isFollowing, setIsFollowing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const checkDesktop = () => {
@@ -54,43 +69,68 @@ export default function ProfilePage() {
     return () => window.removeEventListener('resize', checkDesktop);
   }, []);
 
+  const fetchProfile = async () => {
+    try {
+      const authToken = localStorage.getItem('authToken') || '';
+      const profileUrl = profileId ? `/api/users/${profileId}` : '/api/profile';
+      const res = await fetch(profileUrl, {
+        headers: {
+          'x-user-id': user?.userId || '',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        cache: 'no-store',
+      });
+      if (!res.ok) throw new Error('Failed to fetch profile');
+      const data = await res.json();
+      setProfile({
+        _id: data._id,
+        name: data.name || '',
+        username: data.username || '',
+        bio: data.bio || '',
+        interests: data.interests || [],
+      });
+      setSelectedInterests(data.interests || []);
+      setFriendStatus(data.friendStatus || 'none');
+      setIsFollowing(data.isFollowing || false);
+    } catch (error: any) {
+      console.error('Fetch profile error:', error.message);
+      setError('Ошибка загрузки профиля');
+    }
+  };
+
+  const fetchPosts = async () => {
+    if (!user?.userId || !isOwnProfile()) return;
+    try {
+      const authToken = localStorage.getItem('authToken') || '';
+      const res = await fetch('/api/posts', {
+        headers: {
+          'x-user-id': user.userId,
+          'Authorization': `Bearer ${authToken}`,
+        },
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Не удалось загрузить посты');
+      }
+      const data = await res.json();
+      setPosts(data);
+    } catch (err: any) {
+      console.error('Profile: Ошибка загрузки постов:', err);
+      setError('Ошибка загрузки постов');
+    }
+  };
+
   useEffect(() => {
     if (!isInitialized || !user) return;
 
-    const fetchProfile = async () => {
-      try {
-        setLoading(true);
-        const authToken = localStorage.getItem('authToken') || '';
-        const profileUrl = profileId ? `/api/users/${profileId}` : '/api/profile';
-        const res = await fetch(profileUrl, {
-          headers: {
-            'x-user-id': user.userId,
-            'Authorization': `Bearer ${authToken}`,
-          },
-          cache: 'no-store',
-        });
-        if (!res.ok) throw new Error('Failed to fetch profile');
-        const data = await res.json();
-        setProfile({
-          _id: data._id,
-          name: data.name || '',
-          username: data.username || '',
-          bio: data.bio || '',
-          interests: data.interests || [],
-        });
-        setSelectedInterests(data.interests || []);
-        setPosts(data.posts || []);
-        setFriendStatus(data.friendStatus || 'none');
-        setIsFollowing(data.isFollowing || false); // Предполагаем, что API возвращает isFollowing
-      } catch (error: any) {
-        console.error('Fetch profile error:', error.message);
-        setError('Ошибка загрузки профиля');
-      } finally {
-        setLoading(false);
+    const loadData = async () => {
+      await fetchProfile();
+      if (isOwnProfile()) {
+        await fetchPosts();
       }
+      setLoading(false);
     };
-
-    fetchProfile();
+    loadData();
   }, [isInitialized, user, profileId]);
 
   const handleProfileSubmit = async (e: React.FormEvent) => {
@@ -145,14 +185,32 @@ export default function ProfilePage() {
       const authToken = localStorage.getItem('authToken') || '';
       const url = editingPostId ? `/api/posts/${editingPostId}` : '/api/posts';
       const method = editingPostId ? 'PUT' : 'POST';
+
+      let body: FormData | string;
+      if (editingPostId) {
+        body = JSON.stringify({ content: postContent, userId: user?.userId });
+      } else {
+        const formData = new FormData();
+        formData.append('content', postContent);
+        postImages.forEach((file) => formData.append('images', file));
+        body = formData;
+      }
+
+      const headers: HeadersInit = editingPostId
+        ? {
+            'Content-Type': 'application/json',
+            'x-user-id': user?.userId || '',
+            'Authorization': `Bearer ${authToken}`,
+          }
+        : {
+            'x-user-id': user?.userId || '',
+            'Authorization': `Bearer ${authToken}`,
+          };
+
       const res = await fetch(url, {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user?.userId || '',
-          'Authorization': `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({ content: postContent, userId: user?.userId }),
+        headers,
+        body,
       });
 
       if (!res.ok) {
@@ -167,7 +225,9 @@ export default function ProfilePage() {
           : [updatedPost, ...prev]
       );
       setPostContent('');
+      setPostImages([]);
       setEditingPostId(null);
+      await fetchPosts();
     } catch (err: any) {
       console.error('Ошибка с постом:', err.message);
       setError(err.message);
@@ -176,29 +236,16 @@ export default function ProfilePage() {
     }
   };
 
-  const handleEditPost = (post: any) => {
+  const handleEditPost = (post: PostData) => {
     if (!isOwnProfile()) return;
     setPostContent(post.content);
     setEditingPostId(post._id);
+    setPostImages([]);
   };
 
-  const handleDeletePost = async (postId: string) => {
-    if (!isOwnProfile()) return;
-    try {
-      const authToken = localStorage.getItem('authToken') || '';
-      const res = await fetch(`/api/posts/${postId}`, {
-        method: 'DELETE',
-        headers: {
-          'x-user-id': user?.userId || '',
-          'Authorization': `Bearer ${authToken}`,
-        },
-      });
-      if (res.ok) {
-        setPosts((prev) => prev.filter((post) => post._id !== postId));
-      }
-    } catch (err: any) {
-      console.error('Ошибка удаления поста:', err.message);
-      setError(err.message);
+  const handleFileSelect = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
     }
   };
 
@@ -271,8 +318,8 @@ export default function ProfilePage() {
       if (res.ok) {
         setIsFollowing(!isFollowing);
       } else {
-        const data = await res.json();
-        setError(data.error || 'Ошибка при подписке');
+        const errorData = await res.json();
+        setError(errorData.error || 'Ошибка при подписке');
       }
     } catch (error: any) {
       console.error('Ошибка при подписке:', error.message);
@@ -406,7 +453,7 @@ export default function ProfilePage() {
             <h5>Посты</h5>
             {isOwnProfile() && (
               <Form onSubmit={handlePostSubmit} className="mb-3">
-                <Form.Group className="mb-3">
+                <Form.Group className="mb-3 position-relative">
                   <Form.Control
                     as="textarea"
                     value={postContent}
@@ -415,6 +462,41 @@ export default function ProfilePage() {
                     disabled={submitting}
                     className="telegram-post-input"
                   />
+                  {!editingPostId && (
+                    <Button
+                      variant="link"
+                      onClick={handleFileSelect}
+                      disabled={submitting}
+                      className="position-absolute"
+                      style={{ bottom: '10px', right: '10px', color: '#0088cc' }}
+                      title="Прикрепить изображения"
+                    >
+                      <Paperclip size={24} />
+                    </Button>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    ref={fileInputRef}
+                    onChange={(e) => {
+                      const files = e.target.files;
+                      if (files) setPostImages(Array.from(files));
+                    }}
+                    style={{ display: 'none' }}
+                  />
+                  {postImages.length > 0 && (
+                    <div className="mt-2">
+                      <p>Выбранные файлы:</p>
+                      <ul>
+                        {postImages.map((file, index) => (
+                          <li key={index} className="text-muted">
+                            {file.name}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </Form.Group>
                 <Button
                   variant="primary"
@@ -427,9 +509,10 @@ export default function ProfilePage() {
                 {editingPostId && (
                   <Button
                     variant="secondary"
-                    className="ms-2 telegram-profile-button"
+                    className="ms-2 telegram-post-button-secondary"
                     onClick={() => {
                       setPostContent('');
+                      setPostImages([]);
                       setEditingPostId(null);
                     }}
                     disabled={submitting}
@@ -440,31 +523,24 @@ export default function ProfilePage() {
               </Form>
             )}
             {error && <Alert variant="danger">{error}</Alert>}
-            <ListGroup>
-              {posts.map((post) => (
-                <ListGroup.Item key={post._id} className="telegram-post-item">
-                  <p>{post.content}</p>
-                  {isOwnProfile() && (
-                    <>
-                      <Button
-                        variant="link"
-                        onClick={() => handleEditPost(post)}
-                        className="me-2"
-                      >
-                        Редактировать
-                      </Button>
-                      <Button
-                        variant="link"
-                        onClick={() => handleDeletePost(post._id)}
-                        className="text-danger"
-                      >
-                        Удалить
-                      </Button>
-                    </>
-                  )}
-                </ListGroup.Item>
-              ))}
-            </ListGroup>
+            {posts.length > 0 ? (
+              posts.map((post) => (
+                <Post
+                  key={post._id}
+                  postId={post._id}
+                  username={post.username || currentUsername || 'Unknown User'}
+                  userId={post.userId}
+                  content={post.content}
+                  createdAt={post.createdAt}
+                  images={post.images || []}
+                  likes={post.likes || []}
+                  fetchPosts={fetchPosts}
+                  userAvatar={post.userAvatar || '/default-avatar.png'}
+                />
+              ))
+            ) : (
+              <p className="text-muted">Нет постов для отображения.</p>
+            )}
             {!isDesktop && (
               <div className="mt-4">
                 <h5>Профиль</h5>
@@ -617,7 +693,7 @@ export default function ProfilePage() {
           <Button
             variant="primary"
             onClick={() => {
-              setProfile((prev) => prev ? { ...prev, interests: selectedInterests } : null);
+              setProfile((prev) => (prev ? { ...prev, interests: selectedInterests } : null));
               setShowInterestsModal(false);
             }}
             className="telegram-profile-button"

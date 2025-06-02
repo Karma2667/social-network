@@ -3,11 +3,12 @@
 import { useState } from 'react';
 import { Card, Button, Form, Image } from 'react-bootstrap';
 import { useAuth } from '@/app/lib/AuthContext';
+import { HandThumbsUp, PencilSquare, Trash } from 'react-bootstrap-icons'; // Исправленные иконки
 
 interface PostProps {
   username: string;
   content: string;
-  createdAt: string | number; // Оставляем как есть
+  createdAt: string | number;
   userId: string;
   likes: string[];
   images: string[];
@@ -21,7 +22,7 @@ export default function Post({
   content,
   createdAt,
   userId,
-  likes,
+  likes = [],
   images,
   postId,
   fetchPosts,
@@ -35,11 +36,13 @@ export default function Post({
   const handleLike = async () => {
     if (!currentUserId) return;
     try {
+      const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch(`/api/posts/${postId}/like`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': currentUserId,
+          'Authorization': `Bearer ${authToken}`,
         },
         body: JSON.stringify({ userId: currentUserId }),
       });
@@ -73,11 +76,13 @@ export default function Post({
         imagePaths = files;
       }
 
+      const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch(`/api/posts/${postId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': currentUserId,
+          'Authorization': `Bearer ${authToken}`,
         },
         body: JSON.stringify({ content: editContent, images: imagePaths }),
       });
@@ -95,9 +100,13 @@ export default function Post({
   const handleDelete = async () => {
     if (!currentUserId) return;
     try {
+      const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch(`/api/posts/${postId}`, {
         method: 'DELETE',
-        headers: { 'x-user-id': currentUserId },
+        headers: {
+          'x-user-id': currentUserId,
+          'Authorization': `Bearer ${authToken}`,
+        },
       });
       if (!res.ok) {
         const errorData = await res.json();
@@ -109,36 +118,32 @@ export default function Post({
     }
   };
 
-  // Используем userAvatar, если он не пустой и не дефолтный
   const avatarUrl = userAvatar && userAvatar.trim() && userAvatar !== '/default-avatar.png'
     ? userAvatar
     : '/default-avatar.png';
 
-  // Обработка createdAt для корректного формата
   const formattedDate = typeof createdAt === 'number'
     ? new Date(createdAt).toLocaleString()
     : new Date(createdAt).toLocaleString();
 
   return (
-    <Card className="mb-3">
+    <Card className="telegram-post-card">
       <Card.Body>
-        <div className="d-flex align-items-center mb-2">
+        <div className="d-flex align-items-center mb-3">
           <Image
             src={avatarUrl}
             roundedCircle
             width={40}
             height={40}
-            className="me-2"
+            className="telegram-post-avatar me-3"
             onError={(e) => {
               console.error('Post: Ошибка загрузки аватара:', avatarUrl);
               e.currentTarget.src = '/default-avatar.png';
             }}
           />
           <div>
-            <Card.Title>{username}</Card.Title>
-            <Card.Subtitle className="text-muted">
-              {formattedDate}
-            </Card.Subtitle>
+            <Card.Title className="telegram-post-username">{username}</Card.Title>
+            <Card.Subtitle className="telegram-post-date">{formattedDate}</Card.Subtitle>
           </div>
         </div>
         {isEditing ? (
@@ -149,10 +154,11 @@ export default function Post({
                 rows={3}
                 value={editContent}
                 onChange={(e) => setEditContent(e.target.value)}
+                className="telegram-post-textarea"
               />
             </Form.Group>
             <Form.Group className="mb-3">
-              <Form.Label>Загрузить новые изображения</Form.Label>
+              <Form.Label className="telegram-post-label">Загрузить новые изображения</Form.Label>
               <Form.Control
                 type="file"
                 accept="image/*"
@@ -161,42 +167,60 @@ export default function Post({
                   const files = (e.target as HTMLInputElement).files;
                   if (files) setEditImages(Array.from(files));
                 }}
+                className="telegram-post-file-input"
               />
             </Form.Group>
-            <Button variant="primary" type="submit" className="me-2">
-              Сохранить
-            </Button>
-            <Button variant="secondary" onClick={() => setIsEditing(false)}>
-              Отмена
-            </Button>
+            <div className="d-flex gap-2">
+              <Button variant="primary" type="submit" className="telegram-post-button">
+                Сохранить
+              </Button>
+              <Button variant="secondary" onClick={() => setIsEditing(false)} className="telegram-post-button-secondary">
+                Отмена
+              </Button>
+            </div>
           </Form>
         ) : (
           <>
-            <Card.Text>{content}</Card.Text>
+            <Card.Text className="telegram-post-content">{content}</Card.Text>
             {images && images.length > 0 && (
-              <div className="mb-3">
+              <div className="mb-3 d-flex flex-wrap gap-2">
                 {images.map((image, index) => (
-                  <Image key={index} src={image} thumbnail width={100} className="me-2" />
+                  <Image
+                    key={index}
+                    src={image}
+                    thumbnail
+                    className="telegram-post-image"
+                  />
                 ))}
               </div>
             )}
-            <Button variant="outline-primary" onClick={handleLike} className="me-2">
-              Лайк ({likes.length})
-            </Button>
-            {currentUserId === userId && (
-              <>
-                <Button
-                  variant="outline-secondary"
-                  onClick={() => setIsEditing(true)}
-                  className="me-2"
-                >
-                  Редактировать
-                </Button>
-                <Button variant="outline-danger" onClick={handleDelete}>
-                  Удалить
-                </Button>
-              </>
-            )}
+            <div className="d-flex gap-3">
+              <Button
+                variant="outline-primary"
+                onClick={handleLike}
+                className="telegram-post-like-button"
+              >
+                <HandThumbsUp className="me-1" /> Лайк ({likes.length})
+              </Button>
+              {currentUserId === userId && (
+                <>
+                  <Button
+                    variant="outline-secondary"
+                    onClick={() => setIsEditing(true)}
+                    className="telegram-post-edit-button"
+                  >
+                    <PencilSquare className="me-1" /> Редактировать
+                  </Button>
+                  <Button
+                    variant="outline-danger"
+                    onClick={handleDelete}
+                    className="telegram-post-delete-button"
+                  >
+                    <Trash className="me-1" /> Удалить
+                  </Button>
+                </>
+              )}
+            </div>
           </>
         )}
       </Card.Body>

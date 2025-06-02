@@ -41,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser({ userId: data.userId, username: data.username });
           } else if (isMounted) {
             localStorage.removeItem('authToken');
+            localStorage.removeItem('username');
             console.log('AuthProvider: Токен удалён из-за ошибки:', res.status);
           }
         } else if (isMounted) {
@@ -49,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         console.error('AuthProvider: Ошибка инициализации авторизации:', error);
         localStorage.removeItem('authToken');
+        localStorage.removeItem('username');
       } finally {
         if (isMounted) {
           setIsInitialized(true);
@@ -70,9 +72,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, isInitialized]);
 
   const logout = () => {
+    setUser(null);
     localStorage.removeItem('authToken');
     localStorage.removeItem('username');
-    setUser(null);
   };
 
   return (
