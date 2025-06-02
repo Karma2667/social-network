@@ -1,16 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
   experimental: {
-    appDir: true,
+    // Удаляем appDir, если он не нужен
   },
-  env: {
-    MONGODB_URI: process.env.MONGODB_URI,
-  },
-  productionBrowserSourceMaps: false, // Отключаем source maps в продакшене
   devIndicators: {
-    buildActivity: true,
-    buildActivityPosition: 'bottom-right',
+    position: 'bottom-right', // Обновляем на правильное имя
   },
 };
 

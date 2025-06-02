@@ -1,9 +1,19 @@
 import './globals.css';
 import { ReactNode } from 'react';
-import Navbar from '@/app/Components/Navbar';
-import ClientAuthProvider from '@/app/lib/ClientAuthProvider';
 import { Container } from 'react-bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
+import { AuthProvider } from '@/app/lib/AuthContext';
+
+// Определяем тип для Navbar
+import type { ComponentType } from 'react';
+
+let Navbar: ComponentType | null = null;
+try {
+  Navbar = require('@/app/Components/Navbar').default;
+} catch (e) {
+  console.error('Ошибка импорта Navbar:', e);
+  Navbar = () => <div>Ошибка загрузки навигации</div>; // Заглушка
+}
 
 export const metadata = {
   title: 'Социальная сеть',
@@ -15,14 +25,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="ru" className="telegram-root" suppressHydrationWarning>
       <body>
-        <ClientAuthProvider>
+        <AuthProvider>
           <div className="telegram-header">
-            <Navbar />
+            {Navbar && <Navbar />}
           </div>
           <Container fluid className="telegram-main p-0">
             {children}
           </Container>
-        </ClientAuthProvider>
+        </AuthProvider>
       </body>
     </html>
   );

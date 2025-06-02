@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useSearchParams, useRouter } from 'next/navigation';
-import { useAuth } from '@/app/lib/ClientAuthProvider';
+import { useParams, useRouter } from 'next/navigation';
+import { useAuth } from '@/app/lib/AuthContext';
 import { Container, Row, Col, Form, ListGroup, Button, FormControl, Alert } from 'react-bootstrap';
 import Link from 'next/link';
 
@@ -19,7 +19,7 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
       const res = await fetch(`/api/messages?recipientId=${encodeURIComponent(chatUserId)}`, {
         headers: {
           'x-user-id': currentUserId,
-          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+          'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
         },
         cache: 'no-store',
       });
@@ -54,7 +54,7 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': currentUserId,
-          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+          'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
         },
         body: JSON.stringify({ recipientId: chatUserId, content: message }),
       });
@@ -118,13 +118,12 @@ export default function ChatPage() {
   const { userId, isInitialized, username } = useAuth();
   const router = useRouter();
   const params = useParams();
-  const searchParams = useSearchParams();
+  const chatId = Array.isArray(params.id) ? params.id[0] : params.id; // Приводим к string | undefined
+  const selectedChatUserId: string | null = chatId || null; // Явно приводим к string | null
   const [chats, setChats] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [isDesktop, setIsDesktop] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const chatId = params.id as string | undefined; // Динамический id из маршрута
-  const selectedChatUserId = chatId || searchParams.get('recipient'); // Используем id или recipient
 
   console.log('ChatPage: Инициализация, userId:', userId, 'isInitialized:', isInitialized, 'username:', username, 'selectedChatUserId:', selectedChatUserId);
 
@@ -146,7 +145,7 @@ export default function ChatPage() {
       const res = await fetch(`/api/chats?search=${encodeURIComponent(search)}`, {
         headers: {
           'x-user-id': userId,
-          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+          'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
         },
         cache: 'no-store',
       });
@@ -202,7 +201,7 @@ export default function ChatPage() {
         <Col md={4} className="border-end" style={{ backgroundColor: '#f8f9fa', height: 'calc(100vh - 56px)' }}>
           <div className="p-3">
             <Form.Group className="mb-3">
-              <Form.Control
+              <FormControl
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -215,7 +214,7 @@ export default function ChatPage() {
                 <ListGroup.Item
                   key={chat.user._id}
                   as={Link}
-                  href={`/chat/${chat.user._id}`} // Используем динамический маршрут
+                  href={`/chat/${chat.user._id}`} // Динамический маршрут
                   action
                   active={selectedChatUserId === chat.user._id}
                 >

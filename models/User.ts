@@ -23,14 +23,28 @@ interface IUser extends Document {
   bio?: string;
   interests: string[];
   createdAt: Date;
+  posts?: mongoose.Types.ObjectId[];
+  following?: mongoose.Types.ObjectId[];
 }
 
-// Интерфейс для lean-версии User
+// Интерфейс для lean-версии User с полной структурой
 export interface LeanUser {
   _id: string;
   username: string;
   name?: string;
-  interests: string[];
+  email?: string;
+  password?: string;
+  bio?: string;
+  interests?: string[]; // Сделали необязательным
+  createdAt?: Date;
+  posts?: any[];
+  following?: { _id: string; username: string }[];
+}
+
+// Интерфейс для ограниченного результата (только _id и username)
+export interface LeanUserMinimal {
+  _id: string;
+  username: string;
 }
 
 const UserSchema = new Schema<IUser>({
@@ -49,6 +63,8 @@ const UserSchema = new Schema<IUser>({
     }
   }],
   createdAt: { type: Date, default: Date.now },
+  posts: [{ type: Schema.Types.ObjectId, ref: 'Post' }],
+  following: [{ type: Schema.Types.ObjectId, ref: 'User' }],
 });
 
 export default mongoose.models.User || mongoose.model<IUser>('User', UserSchema);

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import Session from '@/models/Session';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs'; // Исправлено с bcrypt на bcryptjs
 import { v4 as uuidv4 } from 'uuid';
 
 interface LeanUser {
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     }
 
     const token = uuidv4();
-    const session = await Session.create({ userId: user._id, token });
+    const session = await Session.create({ userId: user._id, token, expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) }); // Указываем срок действия
     console.log('POST /api/auth/login: Сессия создана:', { userId: user._id, token, expiresAt: session.expiresAt });
 
     console.timeEnd('POST /api/auth/login: Total');

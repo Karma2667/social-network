@@ -2,51 +2,73 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useAuth } from '@/app/lib/ClientAuthProvider';
+import { useAuth } from '@/app/lib/AuthContext';
+import { useRouter } from 'next/navigation';
 import { Form, FormControl, Button, Card, Container, Row, Col } from 'react-bootstrap';
 import Link from 'next/link';
 
 export default function SearchPage() {
-  const { userId } = useAuth();
+  const { user, isInitialized } = useAuth();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get('query') || '';
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isInitialized || !user) {
+      router.replace('/login');
+      return;
+    }
+    if (initialQuery) {
+      handleSearch(initialQuery);
+    }
+  }, [isInitialized, user, initialQuery, router]);
 
   const handleSearch = async (query: string) => {
     if (!query.trim()) {
       setSearchResults([]);
       return;
     }
+    setLoading(true);
+    setError(null);
     try {
+      const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch(`/api/users/search?query=${encodeURIComponent(query)}`, {
-        headers: { 'x-user-id': userId || '' },
+        headers: {
+          'x-user-id': user?.userId || '',
+          'Authorization': `Bearer ${authToken}`,
+        },
         cache: 'no-store',
       });
       if (!res.ok) {
         const errorData = await res.json();
         console.error('SearchPage: Ошибка поиска:', errorData);
+        setError(errorData.error || 'Ошибка поиска');
         setSearchResults([]);
         return;
       }
       const users = await res.json();
       setSearchResults(users);
-    } catch (err) {
+    } catch (err: any) {
       console.error('SearchPage: Ошибка при выполнении поиска:', err);
+      setError('Ошибка поиска пользователей');
       setSearchResults([]);
+    } finally {
+      setLoading(false);
     }
   };
-
-  useEffect(() => {
-    if (initialQuery) {
-      handleSearch(initialQuery);
-    }
-  }, [initialQuery]);
 
   const truncateBio = (bio: string, maxLength: number) => {
     if (bio.length <= maxLength) return bio;
     return bio.substring(0, maxLength) + '...';
   };
+
+  if (!isInitialized || !user) {
+    return <div>Загрузка...</div>;
+  }
 
   return (
     <Container className="telegram-search-page mt-4">
@@ -65,12 +87,14 @@ export default function SearchPage() {
         <Button
           variant="primary"
           onClick={() => handleSearch(searchQuery)}
+          disabled={loading}
           className="telegram-search-button"
         >
-          Найти
+          {loading ? 'Поиск...' : 'Найти'}
         </Button>
       </Form>
 
+      {error && <p className="text-danger">{error}</p>}
       {searchResults.length > 0 ? (
         <Row>
           {searchResults.map((user) => (

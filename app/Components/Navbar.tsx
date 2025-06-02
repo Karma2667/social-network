@@ -1,35 +1,36 @@
 'use client';
 
-import { Navbar, Nav } from 'react-bootstrap';
-import { useAuth } from '@/app/lib/ClientAuthProvider';
+import { Navbar as BootstrapNavbar, Nav } from 'react-bootstrap';
+import { useAuth } from '@/app/lib/AuthContext';
 import Link from 'next/link';
 
-export default function AppNavbar() {
-  const { userId, username, logout } = useAuth();
+export default function Navbar() {
+  const { user, logout } = useAuth();
 
   return (
-    <Navbar bg="light" expand="lg" className="telegram-header">
-      <Navbar.Brand as={Link} href="/">Социальная сеть</Navbar.Brand>
-      <Navbar.Toggle aria-controls="basic-navbar-nav" />
-      <Navbar.Collapse id="basic-navbar-nav">
+    <BootstrapNavbar bg="light" expand="lg" className="telegram-header">
+      <BootstrapNavbar.Brand as={Link} href="/">Социальная сеть</BootstrapNavbar.Brand>
+      <BootstrapNavbar.Toggle aria-controls="basic-navbar-nav" />
+      <BootstrapNavbar.Collapse id="basic-navbar-nav">
         <Nav className="me-auto">
-          {userId && (
+          {user && (
             <>
               <Nav.Link as={Link} href="/">Главная</Nav.Link>
-              <Nav.Link as={Link} href="/search">Поиск</Nav.Link> {/* Добавлена ссылка на /search */}
+              <Nav.Link as={Link} href="/search">Поиск</Nav.Link>
               <Nav.Link as={Link} href="/profile">Профиль</Nav.Link>
               <Nav.Link as={Link} href="/chat">Чаты</Nav.Link>
+              <Nav.Link as={Link} href="/connections">Контакты</Nav.Link>
               <Nav.Link onClick={logout}>Выйти</Nav.Link>
             </>
           )}
-          {!userId && (
+          {!user && (
             <>
               <Nav.Link as={Link} href="/login">Вход</Nav.Link>
               <Nav.Link as={Link} href="/register">Регистрация</Nav.Link>
             </>
           )}
         </Nav>
-      </Navbar.Collapse>
-    </Navbar>
+      </BootstrapNavbar.Collapse>
+    </BootstrapNavbar>
   );
 }

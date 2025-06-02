@@ -20,7 +20,7 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     let query = searchParams.get('query')?.trim() || '';
-    const currentUserId = request.headers.get('x-user-id') || '';
+    const currentUserId = request.headers.get('x-user-id') || null;
     console.log('GET /api/users/search: Исходный запрос:', query, 'Current User ID:', currentUserId);
 
     if (!query) {
@@ -50,14 +50,13 @@ export async function GET(request: Request) {
           ],
         };
 
-    const finalCriteria = {
-      ...searchCriteria,
-      _id: { $ne: currentUserId },
-    };
+    const finalCriteria = currentUserId
+      ? { ...searchCriteria, _id: { $ne: currentUserId } }
+      : searchCriteria;
 
     console.log('GET /api/users/search: Критерии поиска:', finalCriteria);
     const users = await User.find(finalCriteria)
-      .select('username name avatar bio interests _id') // Добавлен bio
+      .select('username name avatar bio interests _id')
       .limit(20)
       .lean<LeanUser[]>();
     console.log('GET /api/users/search: Пользователи найдены:', users);
@@ -68,6 +67,9 @@ export async function GET(request: Request) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
     console.error('GET /api/users/search: Ошибка:', errorMessage, error);
     console.timeEnd('GET /api/users/search: Total');
-    return NextResponse.json({ error: 'Ошибка поиска пользователей', details: errorMessage }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Ошибка поиска пользователей', details: errorMessage },
+      { status: 500 }
+    );
   }
 }

@@ -501,6 +501,29 @@ a.telegram-profile-button {
   margin-bottom: 10px;
 }
 
+/* Tabs for Connections page */
+.nav-tabs {
+  border-bottom: 1px solid #DEE2E6;
+}
+
+.nav-tabs .nav-link {
+  color: #888;
+  font-weight: 500;
+  border: none;
+  padding: 10px 15px;
+  transition: color 0.2s ease;
+}
+
+.nav-tabs .nav-link:hover {
+  color: #0088CC;
+}
+
+.nav-tabs .nav-link.active {
+  color: #0088CC;
+  background: transparent;
+  border-bottom: 2px solid #0088CC;
+}
+
 /* Responsive styles */
 @media (max-width: 767px) {
   .telegram-sidebar {
@@ -564,4 +587,15 @@ a.telegram-profile-button {
 
 .telegram-header .btn-link:hover {
   color: #005BB5;
+}
+
+/* Link button for profile navigation */
+.telegram-link-button {
+  color: #0088CC;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.telegram-link-button:hover {
+  text-decoration: underline;
 }
