@@ -22,6 +22,7 @@ interface PostData {
   content: string;
   images: string[];
   likes: string[];
+  reactions: { emoji: string; users: string[] }[];
   createdAt: string;
   userAvatar?: string;
 }
@@ -534,6 +535,7 @@ export default function ProfilePage() {
                   createdAt={post.createdAt}
                   images={post.images || []}
                   likes={post.likes || []}
+                  reactions={post.reactions || []}
                   fetchPosts={fetchPosts}
                   userAvatar={post.userAvatar || '/default-avatar.png'}
                 />

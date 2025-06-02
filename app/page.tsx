@@ -1,71 +1,67 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import Post from '@/app/Components/Post';
-import { useAuth } from '@/app/lib/AuthContext';
+import { useState, useEffect, useCallback } from 'react';
+import { Container, Row, Col } from 'react-bootstrap';
+import Post from './Components/Post';
 
 interface PostData {
   _id: string;
-  userId: string;
   username: string;
+  userId: string;
   content: string;
+  createdAt: string | number;
   images: string[];
   likes: string[];
-  createdAt: string;
+  reactions: { emoji: string; users: string[] }[];
   userAvatar?: string;
 }
 
 export default function Home() {
-  const { user, userId } = useAuth();
   const [posts, setPosts] = useState<PostData[]>([]);
 
-  const fetchPosts = async () => {
-    if (!userId) return;
+  const fetchPosts = useCallback(async () => {
     try {
       const authToken = localStorage.getItem('authToken') || '';
+      const userId = localStorage.getItem('userId') || '';
       const res = await fetch('/api/posts', {
         headers: {
           'x-user-id': userId,
           'Authorization': `Bearer ${authToken}`,
         },
       });
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Не удалось загрузить посты');
-      }
+      if (!res.ok) throw new Error('Не удалось загрузить посты');
       const data = await res.json();
       setPosts(data);
     } catch (err: any) {
-      console.error('Home: Ошибка загрузки постов:', err);
+      console.error('Ошибка загрузки постов:', err);
     }
-  };
+  }, []); // Пустой массив зависимостей, так как authToken и userId из localStorage
 
   useEffect(() => {
-    if (userId) {
-      fetchPosts();
-    }
-  }, [userId]);
+    fetchPosts();
+  }, [fetchPosts]);
 
   return (
-    <div className="telegram-posts">
-      {posts.length > 0 ? (
-        posts.map((post) => (
-          <Post
-            key={post._id}
-            postId={post._id}
-            username={post.username || 'Unknown User'}
-            userId={post.userId}
-            content={post.content}
-            createdAt={post.createdAt}
-            images={post.images}
-            likes={post.likes}
-            fetchPosts={fetchPosts}
-            userAvatar={post.userAvatar}
-          />
-        ))
-      ) : (
-        <p className="text-center text-muted">Нет постов для отображения.</p>
-      )}
-    </div>
+    <Container fluid>
+      <Row>
+        <Col md={9}>
+          {posts.map((post) => (
+            <Post
+              key={post._id}
+              postId={post._id}
+              username={post.username}
+              userId={post.userId}
+              content={post.content}
+              createdAt={post.createdAt}
+              images={post.images}
+              likes={post.likes}
+              reactions={post.reactions}
+              fetchPosts={fetchPosts}
+              userAvatar={post.userAvatar}
+            />
+          ))}
+        </Col>
+      </Row>
+    </Container>
   );
 }

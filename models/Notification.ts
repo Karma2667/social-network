@@ -1,8 +1,8 @@
 import mongoose, { Schema } from 'mongoose';
 
 const NotificationSchema = new Schema({
-  userId: { type: Schema.Types.ObjectId, ref: 'User', required: true }, // Кому уведомление
-  type: { type: String, enum: ['like', 'mention', 'message', 'invite'], required: true },
+  userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  type: { type: String, enum: ['like', 'mention', 'message', 'invite', 'post_reaction'], required: true },
   content: { type: String, required: true },
   read: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },

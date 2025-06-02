@@ -1,9 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { Card, Button, Form, Image } from 'react-bootstrap';
+import { useState, useEffect, useCallback } from 'react';
+import { Card, Button, Form, Image, ListGroup } from 'react-bootstrap';
 import { useAuth } from '@/app/lib/AuthContext';
-import { HandThumbsUp, PencilSquare, Trash } from 'react-bootstrap-icons'; // Исправленные иконки
+import { HandThumbsUp, PencilSquare, Trash } from 'react-bootstrap-icons';
+import ReactionPicker from './ReactionPicker';
+import { formatDistanceToNow } from 'date-fns/formatDistanceToNow';
+import { ru } from 'date-fns/locale';
 
 interface PostProps {
   username: string;
@@ -11,10 +14,15 @@ interface PostProps {
   createdAt: string | number;
   userId: string;
   likes: string[];
+  reactions: { emoji: string; users: string[] }[];
   images: string[];
   postId: string;
   fetchPosts: () => Promise<void>;
   userAvatar?: string;
+}
+
+interface ErrorResponse {
+  error?: string;
 }
 
 export default function Post({
@@ -23,42 +31,102 @@ export default function Post({
   createdAt,
   userId,
   likes = [],
-  images,
+  reactions = [],
+  images = [],
   postId,
   fetchPosts,
   userAvatar,
 }: PostProps) {
-  const { userId: currentUserId } = useAuth();
+  const { user } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(content);
   const [editImages, setEditImages] = useState<File[]>([]);
+  const [userLiked, setUserLiked] = useState(false);
+  const [userReactions, setUserReactions] = useState<{ [key: string]: boolean }>({});
 
-  const handleLike = async () => {
-    if (!currentUserId) return;
+  useEffect(() => {
+    if (!user) return;
+
+    const liked = likes.includes(user.userId);
+    if (liked !== userLiked) {
+      setUserLiked(liked);
+    }
+
+    const newReactionMap = reactions.reduce((acc, r) => {
+      acc[r.emoji] = r.users.includes(user.userId);
+      return acc;
+    }, {} as { [key: string]: boolean });
+
+    if (JSON.stringify(newReactionMap) !== JSON.stringify(userReactions)) {
+      setUserReactions(newReactionMap);
+    }
+  }, [likes, reactions, user, userLiked, userReactions]);
+
+  const handleLike = useCallback(async () => {
+    if (!user) return;
     try {
       const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch(`/api/posts/${postId}/like`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-id': currentUserId,
+          'x-user-id': user.userId,
           'Authorization': `Bearer ${authToken}`,
         },
-        body: JSON.stringify({ userId: currentUserId }),
+        body: JSON.stringify({ userId: user.userId }),
       });
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Не удалось поставить лайк');
+
+      let errorData: ErrorResponse = {};
+      try {
+        errorData = await res.json();
+      } catch (jsonError) {
+        console.error('Ошибка разбора JSON:', jsonError);
       }
+
+      if (!res.ok) {
+        throw new Error(errorData.error || `Ошибка сервера: ${res.status}`);
+      }
+
       await fetchPosts();
     } catch (err: any) {
-      console.error('Post: Ошибка постановки лайка:', err);
+      console.error('Ошибка постановки лайка:', err.message);
     }
-  };
+  }, [user, postId, fetchPosts]);
 
-  const handleEdit = async (e: React.FormEvent) => {
+  const handleReaction = useCallback(async (emoji: string) => {
+    if (!user) return;
+    try {
+      const authToken = localStorage.getItem('authToken') || '';
+      const res = await fetch(`/api/posts/${postId}/reactions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': user.userId,
+          'Authorization': `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ userId: user.userId, emoji }),
+      });
+
+      let errorData: ErrorResponse = {};
+      try {
+        errorData = await res.json();
+      } catch (jsonError) {
+        console.error('Ошибка разбора JSON:', jsonError);
+      }
+
+      if (!res.ok) {
+        throw new Error(errorData.error || `Ошибка сервера: ${res.status}`);
+      }
+
+      await fetchPosts();
+    } catch (err: any) {
+      console.error('Ошибка добавления реакции:', err.message);
+    }
+  }, [user, postId, fetchPosts]);
+
+  const handleEdit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUserId) return;
+    if (!user) return;
     try {
       let imagePaths = images;
       if (editImages.length > 0) {
@@ -81,7 +149,7 @@ export default function Post({
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-id': currentUserId,
+          'x-user-id': user.userId,
           'Authorization': `Bearer ${authToken}`,
         },
         body: JSON.stringify({ content: editContent, images: imagePaths }),
@@ -93,18 +161,18 @@ export default function Post({
       setIsEditing(false);
       await fetchPosts();
     } catch (err: any) {
-      console.error('Post: Ошибка обновления поста:', err);
+      console.error('Ошибка обновления поста:', err);
     }
-  };
+  }, [user, postId, editContent, editImages, images, fetchPosts]);
 
-  const handleDelete = async () => {
-    if (!currentUserId) return;
+  const handleDelete = useCallback(async () => {
+    if (!user) return;
     try {
       const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch(`/api/posts/${postId}`, {
         method: 'DELETE',
         headers: {
-          'x-user-id': currentUserId,
+          'x-user-id': user.userId,
           'Authorization': `Bearer ${authToken}`,
         },
       });
@@ -114,17 +182,17 @@ export default function Post({
       }
       await fetchPosts();
     } catch (err: any) {
-      console.error('Post: Ошибка удаления поста:', err);
+      console.error('Ошибка удаления поста:', err);
     }
-  };
+  }, [user, postId, fetchPosts]);
 
   const avatarUrl = userAvatar && userAvatar.trim() && userAvatar !== '/default-avatar.png'
     ? userAvatar
     : '/default-avatar.png';
 
   const formattedDate = typeof createdAt === 'number'
-    ? new Date(createdAt).toLocaleString()
-    : new Date(createdAt).toLocaleString();
+    ? formatDistanceToNow(new Date(createdAt), { addSuffix: true, locale: ru })
+    : formatDistanceToNow(new Date(createdAt), { addSuffix: true, locale: ru });
 
   return (
     <Card className="telegram-post-card">
@@ -137,7 +205,7 @@ export default function Post({
             height={40}
             className="telegram-post-avatar me-3"
             onError={(e) => {
-              console.error('Post: Ошибка загрузки аватара:', avatarUrl);
+              console.error('Ошибка загрузки аватара:', avatarUrl);
               e.currentTarget.src = '/default-avatar.png';
             }}
           />
@@ -182,7 +250,7 @@ export default function Post({
         ) : (
           <>
             <Card.Text className="telegram-post-content">{content}</Card.Text>
-            {images && images.length > 0 && (
+            {images.length > 0 && (
               <div className="mb-3 d-flex flex-wrap gap-2">
                 {images.map((image, index) => (
                   <Image
@@ -194,15 +262,16 @@ export default function Post({
                 ))}
               </div>
             )}
-            <div className="d-flex gap-3">
+            <div className="d-flex gap-3 align-items-center">
               <Button
-                variant="outline-primary"
+                variant={userLiked ? 'primary' : 'outline-primary'}
                 onClick={handleLike}
                 className="telegram-post-like-button"
               >
                 <HandThumbsUp className="me-1" /> Лайк ({likes.length})
               </Button>
-              {currentUserId === userId && (
+              <ReactionPicker onSelect={handleReaction} />
+              {user && user.userId === userId && (
                 <>
                   <Button
                     variant="outline-secondary"
@@ -221,6 +290,15 @@ export default function Post({
                 </>
               )}
             </div>
+            {reactions.length > 0 && (
+              <ListGroup horizontal className="mt-2">
+                {reactions.map((r) => (
+                  <ListGroup.Item key={r.emoji} className="telegram-reaction-count">
+                    {r.emoji} {r.users.length}
+                  </ListGroup.Item>
+                ))}
+              </ListGroup>
+            )}
           </>
         )}
       </Card.Body>

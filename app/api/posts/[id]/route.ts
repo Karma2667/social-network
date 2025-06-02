@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
+import dbConnect from '@/app/lib/mongoDB';
 import Post from '@/models/Post';
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
@@ -10,7 +10,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     console.log('PUT /api/posts/[id]: MongoDB подключен');
 
     const userId = request.headers.get('x-user-id');
-    const { content } = await request.json();
+    const { content, images } = await request.json();
 
     if (!userId) {
       console.log('PUT /api/posts/[id]: Отсутствует x-user-id');
@@ -22,7 +22,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ error: 'Требуется content' }, { status: 400 });
     }
 
-    console.log('PUT /api/posts/[id]: Параметры:', { userId, content });
+    console.log('PUT /api/posts/[id]: Параметры:', { userId, content, images });
 
     const post = await Post.findOne({ _id: params.id, userId });
     if (!post) {
@@ -31,6 +31,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     }
 
     post.content = content;
+    post.images = images || post.images;
     post.updatedAt = new Date();
     await post.save();
 
