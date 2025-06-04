@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Form, Button } from 'react-bootstrap';
 import { Paperclip } from 'react-bootstrap-icons';
+import EmojiPicker from './EmojiPicker';
 
 interface PostFormProps {
   onSubmit: (content: string, images: File[]) => void;
@@ -27,9 +28,13 @@ export default function PostForm({ onSubmit }: PostFormProps) {
     }
   };
 
+  const handleEmojiSelect = (emoji: string) => {
+    setContent((prev) => prev + emoji);
+  };
+
   return (
     <Form onSubmit={handleSubmit} className="mb-4">
-      <Form.Group className="mb-3">
+      <Form.Group className="mb-3 position-relative">
         <Form.Control
           as="textarea"
           rows={3}
@@ -37,6 +42,9 @@ export default function PostForm({ onSubmit }: PostFormProps) {
           value={content}
           onChange={(e) => setContent(e.target.value)}
         />
+        <div className="position-absolute top-0 end-0 mt-1 me-2 d-flex align-items-center">
+          <EmojiPicker onSelect={handleEmojiSelect} />
+        </div>
       </Form.Group>
       <Form.Group className="mb-3 d-flex align-items-center">
         <Form.Label htmlFor="image-upload" className="me-2">

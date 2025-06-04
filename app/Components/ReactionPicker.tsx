@@ -7,7 +7,7 @@ interface ReactionPickerProps {
 }
 
 export default function ReactionPicker({ onSelect }: ReactionPickerProps) {
-  const emojis = ['👍', '❤️', '😂', '😢', '😮'];
+  const emojis = ['🤡', '👍', '👎', '❤️', '😂', '😢', '😮', '😡', '🤯', '🤩', '👏', '🙌', '🔥', '🎉'];
 
   return (
     <div className="reaction-picker">

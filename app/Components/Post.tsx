@@ -5,7 +5,7 @@ import { Card, Button, Form, Image, ListGroup } from 'react-bootstrap';
 import { useAuth } from '@/app/lib/AuthContext';
 import { HandThumbsUp, PencilSquare, Trash } from 'react-bootstrap-icons';
 import ReactionPicker from './ReactionPicker';
-import { formatDistanceToNow } from 'date-fns/formatDistanceToNow'; // Исправленный импорт для 3.x
+import { formatDistanceToNow } from 'date-fns/formatDistanceToNow';
 
 interface PostProps {
   username: string;
@@ -37,17 +37,15 @@ export default function Post({
   const [editContent, setEditContent] = useState(content);
   const [editImages, setEditImages] = useState<File[]>([]);
   const [userLiked, setUserLiked] = useState(false);
-  const [userReactions, setUserReactions] = useState<{ [key: string]: boolean }>({});
+  const [userReaction, setUserReaction] = useState<string | null>(null);
   const [showReactions, setShowReactions] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false); // Новый стейт для показа меню эмодзи
 
   useEffect(() => {
     if (user) {
       setUserLiked(likes.includes(user.userId));
-      const userReactionMap = reactions.reduce((acc, r) => {
-        acc[r.emoji] = r.users.includes(user.userId);
-        return acc;
-      }, {} as { [key: string]: boolean });
-      setUserReactions(userReactionMap);
+      const reaction = reactions.find((r) => r.users.includes(user.userId));
+      setUserReaction(reaction ? reaction.emoji : null);
     }
   }, [likes, reactions, user]);
 
@@ -55,6 +53,7 @@ export default function Post({
     if (!user) return;
     try {
       const authToken = localStorage.getItem('authToken') || '';
+      console.log('Отправка запроса на лайк:', `/api/posts/${postId}/likes`);
       const res = await fetch(`/api/posts/${postId}/likes`, {
         method: 'POST',
         headers: {
@@ -64,13 +63,37 @@ export default function Post({
         },
         body: JSON.stringify({ userId: user.userId }),
       });
+      console.log('Ответ на запрос лайка:', res.status, res.statusText);
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Не удалось поставить лайк');
+        const errorData = await res.text();
+        console.error('Ошибка ответа сервера:', errorData);
+        throw new Error(errorData || 'Не удалось поставить/убрать лайк');
+      }
+      const updatedPost = await res.json();
+      setUserLiked(updatedPost.likes.includes(user.userId));
+      setUserReaction(null);
+
+      // Если лайк добавлен, ставим реакцию 👍
+      if (!userLiked && updatedPost.likes.includes(user.userId)) {
+        console.log('Добавление реакции 👍');
+        const reactionRes = await fetch(`/api/posts/${postId}/reactions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': user.userId,
+            'Authorization': `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({ userId: user.userId, emoji: '👍' }),
+        });
+        console.log('Ответ на запрос реакции:', reactionRes.status, reactionRes.statusText);
+        if (!reactionRes.ok) {
+          const reactionErrorData = await reactionRes.text();
+          console.error('Ошибка добавления реакции:', reactionErrorData);
+        }
       }
       await fetchPosts();
     } catch (err: any) {
-      console.error('Post: Ошибка постановки лайка:', err);
+      console.error('Post: Ошибка постановки/снятия лайка:', err);
     }
   };
 
@@ -78,6 +101,7 @@ export default function Post({
     if (!user) return;
     try {
       const authToken = localStorage.getItem('authToken') || '';
+      console.log('Отправка запроса на реакцию:', emoji);
       const res = await fetch(`/api/posts/${postId}/reactions`, {
         method: 'POST',
         headers: {
@@ -87,10 +111,15 @@ export default function Post({
         },
         body: JSON.stringify({ userId: user.userId, emoji }),
       });
+      console.log('Ответ на запрос реакции:', res.status, res.statusText);
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Не удалось добавить реакцию');
+        const errorData = await res.text();
+        console.error('Ошибка ответа сервера:', errorData);
+        throw new Error(errorData || 'Не удалось добавить реакцию');
       }
+      const updatedPost = await res.json();
+      const userNewReaction = updatedPost.reactions.find((r: { users: string[] }) => r.users.includes(user.userId));
+      setUserReaction(userNewReaction ? userNewReaction.emoji : null);
       await fetchPosts();
       setShowReactions(false);
     } catch (err: any) {
@@ -160,6 +189,11 @@ export default function Post({
     }
   };
 
+  const handleAddEmoji = (emoji: string) => {
+    setEditContent((prev) => prev + emoji);
+    setShowEmojiPicker(false); // Закрываем меню после выбора
+  };
+
   const avatarUrl = userAvatar && userAvatar.trim() && userAvatar !== '/default-avatar.png'
     ? userAvatar
     : '/default-avatar.png';
@@ -191,13 +225,38 @@ export default function Post({
         {isEditing ? (
           <Form onSubmit={handleEdit}>
             <Form.Group className="mb-3">
-              <Form.Control
-                as="textarea"
-                rows={3}
-                value={editContent}
-                onChange={(e) => setEditContent(e.target.value)}
-                className="telegram-post-textarea"
-              />
+              <div className="position-relative">
+                <Form.Control
+                  as="textarea"
+                  rows={3}
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  className="telegram-post-textarea"
+                  placeholder="Введите текст поста с эмодзи..."
+                />
+                <Button
+                  variant="outline-secondary"
+                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                  className="position-absolute top-0 end-0 mt-1 me-1"
+                  style={{ padding: '2px 6px' }}
+                >
+                  😊
+                </Button>
+                {showEmojiPicker && (
+                  <div className="emoji-picker position-absolute bg-light border rounded p-2" style={{ zIndex: 1000, top: '100%', right: 0 }}>
+                    {['👍', '❤️', '😂', '😢', '😮', '🤡', '😡', '🤯', '🤩', '👏', '🙌', '🔥', '🎉'].map((emoji) => (
+                      <Button
+                        key={emoji}
+                        variant="link"
+                        onClick={() => handleAddEmoji(emoji)}
+                        style={{ padding: '2px 6px', fontSize: '1.2rem', lineHeight: 1 }}
+                      >
+                        {emoji}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </Form.Group>
             <Form.Group className="mb-3">
               <Form.Label className="telegram-post-label">Загрузить новые изображения</Form.Label>

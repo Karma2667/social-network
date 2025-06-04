@@ -17,7 +17,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: 'Требуется emoji' }, { status: 400 });
     }
 
-    const allowedEmojis = ['👍', '❤️', '😂', '😢', '😮'];
+    const allowedEmojis = ['🤡', '👍', '👎', '❤️', '😂', '😢', '😮', '😡', '🤯', '🤩', '👏', '🙌', '🔥', '🎉'];
     if (!allowedEmojis.includes(emoji)) {
       return NextResponse.json({ error: 'Недопустимый emoji' }, { status: 400 });
     }
@@ -37,6 +37,14 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       post.reactions = [];
     }
 
+    if (!post.likes) {
+      post.likes = [];
+    }
+
+    // Удаляем все предыдущие реакции пользователя
+    post.reactions = post.reactions.filter((r: { users: string[] }) => !r.users.includes(userId));
+
+    // Добавляем новую реакцию
     const reactionIndex = post.reactions.findIndex((r: { emoji: string }) => r.emoji === emoji);
     let action = '';
 
@@ -44,18 +52,13 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       post.reactions.push({ emoji, users: [userId] });
       action = 'reacted';
     } else {
-      const users = post.reactions[reactionIndex].users;
-      const userIndex = users.indexOf(userId);
-      if (userIndex === -1) {
-        users.push(userId);
-        action = 'reacted';
-      } else {
-        users.splice(userIndex, 1);
-        if (users.length === 0) {
-          post.reactions.splice(reactionIndex, 1);
-        }
-        action = 'unreacted';
-      }
+      post.reactions[reactionIndex].users.push(userId);
+      action = 'reacted';
+    }
+
+    // Добавляем лайк, если его ещё нет
+    if (!post.likes.includes(userId)) {
+      post.likes.push(userId);
     }
 
     await post.save();
@@ -64,7 +67,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       await Notification.create({
         userId: post.userId._id,
         type: 'post_reaction',
-        content: `Ваш пост получил реакцию ${emoji} от пользователя ${headerUserId}`, // Используем headerUserId
+        content: `Ваш пост получил реакцию ${emoji} от пользователя ${headerUserId}`,
         relatedId: post._id,
         relatedModel: 'Post',
         senderId: userId,

@@ -6,6 +6,7 @@ import { useAuth } from '@/app/lib/AuthContext';
 import { Container, Row, Col, Form, Button, Alert, Modal, FormCheck, Image } from 'react-bootstrap';
 import Post from '@/app/Components/Post';
 import { Paperclip } from 'react-bootstrap-icons';
+import EmojiPicker from '@/app/Components/EmojiPicker';
 
 interface ProfileData {
   _id: string;
@@ -244,6 +245,10 @@ export default function ProfilePage() {
     setPostImages([]);
   };
 
+  const handleEmojiSelect = (emoji: string) => {
+    setPostContent((prev) => prev + emoji);
+  };
+
   const handleFileSelect = () => {
     if (fileInputRef.current) {
       fileInputRef.current.click();
@@ -463,18 +468,24 @@ export default function ProfilePage() {
                     disabled={submitting}
                     className="telegram-post-input"
                   />
-                  {!editingPostId && (
-                    <Button
-                      variant="link"
-                      onClick={handleFileSelect}
-                      disabled={submitting}
-                      className="position-absolute"
-                      style={{ bottom: '10px', right: '10px', color: '#0088cc' }}
-                      title="Прикрепить изображения"
-                    >
-                      <Paperclip size={24} />
-                    </Button>
-                  )}
+                  <div
+                    className="position-absolute"
+                    style={{ bottom: '10px', right: '10px', display: 'flex', alignItems: 'center' }}
+                  >
+                    <EmojiPicker onSelect={handleEmojiSelect} />
+                    {!editingPostId && (
+                      <Button
+                        variant="link"
+                        onClick={handleFileSelect}
+                        disabled={submitting}
+                        className="ms-2"
+                        style={{ color: '#0088cc' }}
+                        title="Прикрепить изображения"
+                      >
+                        <Paperclip size={24} />
+                      </Button>
+                    )}
+                  </div>
                   <input
                     type="file"
                     accept="image/*"
