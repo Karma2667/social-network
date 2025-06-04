@@ -4,18 +4,15 @@ import Post from '@/models/Post';
 import Notification from '@/models/Notification';
 import mongoose from 'mongoose';
 
-export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     await dbConnect();
-    const { id } = await params;
     const { userId, emoji } = await request.json();
 
-    // Проверка валидности ID
-    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(userId)) {
+    if (!mongoose.Types.ObjectId.isValid(params.id) || !mongoose.Types.ObjectId.isValid(userId)) {
       return NextResponse.json({ error: 'Некорректные ID' }, { status: 400 });
     }
 
-    // Проверка emoji
     if (!emoji || typeof emoji !== 'string') {
       return NextResponse.json({ error: 'Требуется emoji' }, { status: 400 });
     }
@@ -25,25 +22,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Недопустимый emoji' }, { status: 400 });
     }
 
-    // Проверка заголовков авторизации
     const authToken = request.headers.get('Authorization')?.replace('Bearer ', '');
     const headerUserId = request.headers.get('x-user-id');
     if (!authToken || !headerUserId || headerUserId !== userId) {
       return NextResponse.json({ error: 'Неавторизованный доступ' }, { status: 401 });
     }
 
-    // Поиск поста
-    const post = await Post.findById(id).populate('userId', 'username');
+    const post = await Post.findById(params.id).populate('userId', 'username');
     if (!post) {
       return NextResponse.json({ error: 'Пост не найден' }, { status: 404 });
     }
 
-    // Инициализация reactions, если отсутствует
     if (!post.reactions) {
       post.reactions = [];
     }
 
-    // Обработка реакции
     const reactionIndex = post.reactions.findIndex((r: { emoji: string }) => r.emoji === emoji);
     let action = '';
 
@@ -67,12 +60,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     await post.save();
 
-    // Создание уведомления
-    if (action === 'reacted' && post.userId !== userId) {
+    if (action === 'reacted' && post.userId._id.toString() !== userId) {
       await Notification.create({
-        userId: post.userId,
-        type: 'message', // Используем допустимый тип из enum
-        content: `Ваш пост получил реакцию ${emoji} от пользователя ${post.userId}`,
+        userId: post.userId._id,
+        type: 'post_reaction',
+        content: `Ваш пост получил реакцию ${emoji} от пользователя ${headerUserId}`, // Используем headerUserId
         relatedId: post._id,
         relatedModel: 'Post',
         senderId: userId,

@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, Button, Form, Image, ListGroup } from 'react-bootstrap';
 import { useAuth } from '@/app/lib/AuthContext';
 import { HandThumbsUp, PencilSquare, Trash } from 'react-bootstrap-icons';
 import ReactionPicker from './ReactionPicker';
-import { formatDistanceToNow } from 'date-fns/formatDistanceToNow';
-import { ru } from 'date-fns/locale';
+import { formatDistanceToNow } from 'date-fns/formatDistanceToNow'; // Исправленный импорт для 3.x
 
 interface PostProps {
   username: string;
@@ -21,10 +20,6 @@ interface PostProps {
   userAvatar?: string;
 }
 
-interface ErrorResponse {
-  error?: string;
-}
-
 export default function Post({
   username,
   content,
@@ -32,7 +27,7 @@ export default function Post({
   userId,
   likes = [],
   reactions = [],
-  images = [],
+  images,
   postId,
   fetchPosts,
   userAvatar,
@@ -43,30 +38,24 @@ export default function Post({
   const [editImages, setEditImages] = useState<File[]>([]);
   const [userLiked, setUserLiked] = useState(false);
   const [userReactions, setUserReactions] = useState<{ [key: string]: boolean }>({});
+  const [showReactions, setShowReactions] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
-
-    const liked = likes.includes(user.userId);
-    if (liked !== userLiked) {
-      setUserLiked(liked);
+    if (user) {
+      setUserLiked(likes.includes(user.userId));
+      const userReactionMap = reactions.reduce((acc, r) => {
+        acc[r.emoji] = r.users.includes(user.userId);
+        return acc;
+      }, {} as { [key: string]: boolean });
+      setUserReactions(userReactionMap);
     }
+  }, [likes, reactions, user]);
 
-    const newReactionMap = reactions.reduce((acc, r) => {
-      acc[r.emoji] = r.users.includes(user.userId);
-      return acc;
-    }, {} as { [key: string]: boolean });
-
-    if (JSON.stringify(newReactionMap) !== JSON.stringify(userReactions)) {
-      setUserReactions(newReactionMap);
-    }
-  }, [likes, reactions, user, userLiked, userReactions]);
-
-  const handleLike = useCallback(async () => {
+  const handleLike = async () => {
     if (!user) return;
     try {
       const authToken = localStorage.getItem('authToken') || '';
-      const res = await fetch(`/api/posts/${postId}/like`, {
+      const res = await fetch(`/api/posts/${postId}/likes`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -75,25 +64,17 @@ export default function Post({
         },
         body: JSON.stringify({ userId: user.userId }),
       });
-
-      let errorData: ErrorResponse = {};
-      try {
-        errorData = await res.json();
-      } catch (jsonError) {
-        console.error('Ошибка разбора JSON:', jsonError);
-      }
-
       if (!res.ok) {
-        throw new Error(errorData.error || `Ошибка сервера: ${res.status}`);
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Не удалось поставить лайк');
       }
-
       await fetchPosts();
     } catch (err: any) {
-      console.error('Ошибка постановки лайка:', err.message);
+      console.error('Post: Ошибка постановки лайка:', err);
     }
-  }, [user, postId, fetchPosts]);
+  };
 
-  const handleReaction = useCallback(async (emoji: string) => {
+  const handleReaction = async (emoji: string) => {
     if (!user) return;
     try {
       const authToken = localStorage.getItem('authToken') || '';
@@ -106,25 +87,18 @@ export default function Post({
         },
         body: JSON.stringify({ userId: user.userId, emoji }),
       });
-
-      let errorData: ErrorResponse = {};
-      try {
-        errorData = await res.json();
-      } catch (jsonError) {
-        console.error('Ошибка разбора JSON:', jsonError);
-      }
-
       if (!res.ok) {
-        throw new Error(errorData.error || `Ошибка сервера: ${res.status}`);
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Не удалось добавить реакцию');
       }
-
       await fetchPosts();
+      setShowReactions(false);
     } catch (err: any) {
-      console.error('Ошибка добавления реакции:', err.message);
+      console.error('Post: Ошибка добавления реакции:', err);
     }
-  }, [user, postId, fetchPosts]);
+  };
 
-  const handleEdit = useCallback(async (e: React.FormEvent) => {
+  const handleEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
     try {
@@ -161,11 +135,11 @@ export default function Post({
       setIsEditing(false);
       await fetchPosts();
     } catch (err: any) {
-      console.error('Ошибка обновления поста:', err);
+      console.error('Post: Ошибка обновления поста:', err);
     }
-  }, [user, postId, editContent, editImages, images, fetchPosts]);
+  };
 
-  const handleDelete = useCallback(async () => {
+  const handleDelete = async () => {
     if (!user) return;
     try {
       const authToken = localStorage.getItem('authToken') || '';
@@ -182,20 +156,20 @@ export default function Post({
       }
       await fetchPosts();
     } catch (err: any) {
-      console.error('Ошибка удаления поста:', err);
+      console.error('Post: Ошибка удаления поста:', err);
     }
-  }, [user, postId, fetchPosts]);
+  };
 
   const avatarUrl = userAvatar && userAvatar.trim() && userAvatar !== '/default-avatar.png'
     ? userAvatar
     : '/default-avatar.png';
 
   const formattedDate = typeof createdAt === 'number'
-    ? formatDistanceToNow(new Date(createdAt), { addSuffix: true, locale: ru })
-    : formatDistanceToNow(new Date(createdAt), { addSuffix: true, locale: ru });
+    ? formatDistanceToNow(new Date(createdAt), { addSuffix: true })
+    : formatDistanceToNow(new Date(createdAt), { addSuffix: true });
 
   return (
-    <Card className="telegram-post-card">
+    <Card className="telegram-post-card position-relative">
       <Card.Body>
         <div className="d-flex align-items-center mb-3">
           <Image
@@ -205,7 +179,7 @@ export default function Post({
             height={40}
             className="telegram-post-avatar me-3"
             onError={(e) => {
-              console.error('Ошибка загрузки аватара:', avatarUrl);
+              console.error('Post: Ошибка загрузки аватара:', avatarUrl);
               e.currentTarget.src = '/default-avatar.png';
             }}
           />
@@ -250,7 +224,7 @@ export default function Post({
         ) : (
           <>
             <Card.Text className="telegram-post-content">{content}</Card.Text>
-            {images.length > 0 && (
+            {images && images.length > 0 && (
               <div className="mb-3 d-flex flex-wrap gap-2">
                 {images.map((image, index) => (
                   <Image
@@ -263,14 +237,24 @@ export default function Post({
               </div>
             )}
             <div className="d-flex gap-3 align-items-center">
-              <Button
-                variant={userLiked ? 'primary' : 'outline-primary'}
-                onClick={handleLike}
-                className="telegram-post-like-button"
+              <div
+                className="position-relative"
+                onMouseEnter={() => setShowReactions(true)}
+                onMouseLeave={() => setShowReactions(false)}
               >
-                <HandThumbsUp className="me-1" /> Лайк ({likes.length})
-              </Button>
-              <ReactionPicker onSelect={handleReaction} />
+                <Button
+                  variant={userLiked ? 'primary' : 'outline-primary'}
+                  onClick={handleLike}
+                  className="telegram-post-like-button"
+                >
+                  <HandThumbsUp className="me-1" /> Лайк ({likes.length})
+                </Button>
+                {showReactions && (
+                  <div className="reaction-menu position-absolute bg-light border rounded p-2" style={{ zIndex: 1000 }}>
+                    <ReactionPicker onSelect={handleReaction} />
+                  </div>
+                )}
+              </div>
               {user && user.userId === userId && (
                 <>
                   <Button
