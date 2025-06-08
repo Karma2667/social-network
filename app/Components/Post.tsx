@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Card, Button, Form, Image, ListGroup } from 'react-bootstrap';
 import { useAuth } from '@/app/lib/AuthContext';
-import { HandThumbsUp, PencilSquare, Trash } from 'react-bootstrap-icons';
+import { HandThumbsUp, PencilSquare, Trash, Paperclip } from 'react-bootstrap-icons';
 import ReactionPicker from './ReactionPicker';
 import Comment from './Comment';
 import { formatDistanceToNow } from 'date-fns/formatDistanceToNow';
@@ -40,7 +40,7 @@ export default function Post({
   postId,
   fetchPosts,
   userAvatar,
-  comments = [],
+  comments: initialComments = [],
 }: PostProps) {
   const { user } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
@@ -52,7 +52,9 @@ export default function Post({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [newComment, setNewComment] = useState('');
+  const [commentImages, setCommentImages] = useState<File[]>([]);
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [comments, setComments] = useState<CommentProps[]>(initialComments); // Локальное состояние для комментариев
 
   useEffect(() => {
     if (user) {
@@ -60,7 +62,8 @@ export default function Post({
       const reaction = reactions.find((r) => r.users.includes(user.userId));
       setUserReaction(reaction ? reaction.emoji : null);
     }
-  }, [likes, reactions, user]);
+    console.log('Post: Инициализация с комментариями:', comments); // Отладка
+  }, [likes, reactions, user, comments]);
 
   const handleLike = async () => {
     if (!user) return;
@@ -124,7 +127,7 @@ export default function Post({
     e.preventDefault();
     if (!user) return;
     try {
-      let imagePaths = images;
+      let imagePaths = images || [];
       if (editImages.length > 0) {
         const formData = new FormData();
         editImages.forEach((file) => formData.append('files', file));
@@ -178,24 +181,43 @@ export default function Post({
 
     try {
       const authToken = localStorage.getItem('authToken') || '';
+      const formData = new FormData();
+      formData.append('content', newComment);
+      commentImages.forEach((file) => formData.append('images', file));
+
       const res = await fetch('/api/comments', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           'x-user-id': user.userId,
           'Authorization': `Bearer ${authToken}`,
         },
-        body: JSON.stringify({ postId, content: newComment }),
+        body: formData,
       });
 
       if (!res.ok) throw new Error(await res.text() || 'Не удалось добавить комментарий');
+      const responseData = await res.json();
+      console.log('Post: Ответ от /api/comments:', responseData);
+
+      // Временное добавление комментария в локальное состояние
+      const newCommentObj = {
+        ...responseData,
+        userId: { _id: user.userId, username: user.username || user.userId },
+      };
+      setComments((prevComments) => [...prevComments, newCommentObj]);
+
       setNewComment('');
+      setCommentImages([]);
       await fetchPosts();
     } catch (err: any) {
       console.error('Post: Ошибка добавления комментария:', err);
     } finally {
       setSubmittingComment(false);
     }
+  };
+
+  const handleAddCommentEmoji = (emoji: string) => {
+    setNewComment((prev) => prev + emoji);
+    setShowEmojiPicker(false);
   };
 
   const avatarUrl = userAvatar && userAvatar.trim() && userAvatar !== '/default-avatar.png'
@@ -328,7 +350,7 @@ export default function Post({
                   ))}
                 </ListGroup>
                 <Form onSubmit={handleAddComment} className="mt-3">
-                  <Form.Group>
+                  <Form.Group className="position-relative">
                     <Form.Control
                       as="textarea"
                       value={newComment}
@@ -336,7 +358,60 @@ export default function Post({
                       placeholder="Напишите комментарий..."
                       disabled={submittingComment}
                     />
+                    <div
+                      className="position-absolute"
+                      style={{ bottom: '10px', right: '10px', display: 'flex', alignItems: 'center' }}
+                    >
+                      <Button
+                        variant="link"
+                        onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                        style={{ color: '#0088cc', padding: '2px 6px' }}
+                        disabled={submittingComment}
+                      >
+                        😊
+                      </Button>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={(e) => {
+                          const target = e.target as HTMLInputElement;
+                          if (target.files) setCommentImages(Array.from(target.files));
+                        }}
+                        style={{ display: 'none' }}
+                        id={`comment-file-${postId}`}
+                      />
+                      <Button
+                        variant="link"
+                        onClick={() => document.getElementById(`comment-file-${postId}`)?.click()}
+                        style={{ color: '#0088cc', padding: '2px 6px' }}
+                        disabled={submittingComment}
+                      >
+                        <Paperclip size={18} />
+                      </Button>
+                    </div>
+                    {showEmojiPicker && (
+                      <div className="emoji-picker position-absolute bg-light border rounded p-2" style={{ zIndex: 1000, bottom: '100%', right: 0 }}>
+                        {['👍', '❤️', '😂', '😢', '😮', '🤡', '😡', '🤯', '🤩', '👏', '🙌', '🔥', '🎉'].map((emoji) => (
+                          <Button key={emoji} variant="link" onClick={() => handleAddCommentEmoji(emoji)} style={{ padding: '2px 6px', fontSize: '1.2rem', lineHeight: 1 }}>
+                            {emoji}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
                   </Form.Group>
+                  {commentImages.length > 0 && (
+                    <div className="mt-2">
+                      <p>Выбранные файлы:</p>
+                      <ul>
+                        {commentImages.map((file, index) => (
+                          <li key={index} className="text-muted">
+                            {file.name}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   <Button variant="primary" type="submit" disabled={submittingComment} className="mt-2">
                     {submittingComment ? 'Отправка...' : 'Отправить'}
                   </Button>

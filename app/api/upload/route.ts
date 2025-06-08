@@ -1,21 +1,17 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
-import dbConnect from '@/lib/mongodb';
 
 export async function POST(request: Request) {
   console.time('POST /api/upload: Total');
-  console.log('POST /api/upload: Запрос получен');
+  process.stdout.write('POST /api/upload: Запрос получен\n');
 
   try {
-    await dbConnect();
-    console.log('POST /api/upload: MongoDB подключен');
-
     const formData = await request.formData();
     const files = formData.getAll('files') as File[];
 
     if (!files || files.length === 0) {
-      console.log('POST /api/upload: Отсутствуют файлы');
+      process.stdout.write('POST /api/upload: Отсутствуют файлы\n');
       return NextResponse.json({ error: 'Требуются изображения' }, { status: 400 });
     }
 
@@ -32,12 +28,12 @@ export async function POST(request: Request) {
       uploadedFiles.push(`/uploads/${fileName}`);
     }
 
-    console.log('POST /api/upload: Изображения загружены:', uploadedFiles);
+    process.stdout.write(`POST /api/upload: Изображения загружены: ${JSON.stringify(uploadedFiles)}\n`);
     console.timeEnd('POST /api/upload: Total');
     return NextResponse.json({ files: uploadedFiles }, { status: 200 });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-    console.error('POST /api/upload: Ошибка:', errorMessage, error);
+    process.stdout.write(`POST /api/upload: Ошибка: ${JSON.stringify({ message: errorMessage, rawError: error })}\n`);
     console.timeEnd('POST /api/upload: Total');
     return NextResponse.json({ error: 'Ошибка загрузки изображений', details: errorMessage }, { status: 500 });
   }
