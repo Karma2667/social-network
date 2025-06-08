@@ -1,17 +1,33 @@
-import mongoose from 'mongoose';
+import mongoose, { Schema, Document, Types } from 'mongoose';
+import Comment from './Comment';
 
-const PostSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-  content: { type: String, required: true },
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date },
-  images: { type: [String], default: [] },
-  likes: { type: [mongoose.Schema.Types.ObjectId], ref: 'User', default: [] },
-  reactions: [{
-    emoji: { type: String, required: true },
-    users: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  }],
-});
+export interface PostDocument extends Document {
+  userId: Types.ObjectId;
+  content: string;
+  createdAt: Date;
+  updatedAt?: Date;
+  likes: string[];
+  reactions: { emoji: string; users: string[] }[];
+  images: string[];
+  comments: Types.ObjectId[];
+  username?: string; // Добавь, если нужно
+  userAvatar?: string; // Добавь, если нужно
+}
 
-console.log('PostSchema: Модель создана');
-export default mongoose.models.Post || mongoose.model('Post', PostSchema);
+const PostSchema = new Schema<PostDocument>(
+  {
+    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    content: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date },
+    likes: [{ type: String, default: [] }],
+    reactions: [{ emoji: String, users: [{ type: String }] }],
+    images: [{ type: String, default: [] }],
+    comments: [{ type: Schema.Types.ObjectId, ref: 'Comment', default: [] }],
+    username: { type: String }, // Добавь, если нужно
+    userAvatar: { type: String }, // Добавь, если нужно
+  },
+  { timestamps: true }
+);
+
+export default mongoose.models.Post || mongoose.model<PostDocument>('Post', PostSchema);

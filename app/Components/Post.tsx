@@ -5,6 +5,7 @@ import { Card, Button, Form, Image, ListGroup } from 'react-bootstrap';
 import { useAuth } from '@/app/lib/AuthContext';
 import { HandThumbsUp, PencilSquare, Trash } from 'react-bootstrap-icons';
 import ReactionPicker from './ReactionPicker';
+import Comment from './Comment';
 import { formatDistanceToNow } from 'date-fns/formatDistanceToNow';
 
 interface PostProps {
@@ -18,6 +19,14 @@ interface PostProps {
   postId: string;
   fetchPosts: () => Promise<void>;
   userAvatar?: string;
+  comments: CommentProps[];
+}
+
+interface CommentProps {
+  _id: string;
+  userId: { _id: string; username: string }; // Изменён с string на объект
+  content: string;
+  createdAt: string;
 }
 
 export default function Post({
@@ -31,6 +40,7 @@ export default function Post({
   postId,
   fetchPosts,
   userAvatar,
+  comments = [],
 }: PostProps) {
   const { user } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
@@ -39,7 +49,8 @@ export default function Post({
   const [userLiked, setUserLiked] = useState(false);
   const [userReaction, setUserReaction] = useState<string | null>(null);
   const [showReactions, setShowReactions] = useState(false);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false); // Новый стейт для показа меню эмодзи
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showComments, setShowComments] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -53,7 +64,6 @@ export default function Post({
     if (!user) return;
     try {
       const authToken = localStorage.getItem('authToken') || '';
-      console.log('Отправка запроса на лайк:', `/api/posts/${postId}/likes`);
       const res = await fetch(`/api/posts/${postId}/likes`, {
         method: 'POST',
         headers: {
@@ -63,20 +73,12 @@ export default function Post({
         },
         body: JSON.stringify({ userId: user.userId }),
       });
-      console.log('Ответ на запрос лайка:', res.status, res.statusText);
-      if (!res.ok) {
-        const errorData = await res.text();
-        console.error('Ошибка ответа сервера:', errorData);
-        throw new Error(errorData || 'Не удалось поставить/убрать лайк');
-      }
+      if (!res.ok) throw new Error(await res.text() || 'Не удалось поставить/убрать лайк');
       const updatedPost = await res.json();
       setUserLiked(updatedPost.likes.includes(user.userId));
       setUserReaction(null);
-
-      // Если лайк добавлен, ставим реакцию 👍
       if (!userLiked && updatedPost.likes.includes(user.userId)) {
-        console.log('Добавление реакции 👍');
-        const reactionRes = await fetch(`/api/posts/${postId}/reactions`, {
+        await fetch(`/api/posts/${postId}/reactions`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -85,15 +87,10 @@ export default function Post({
           },
           body: JSON.stringify({ userId: user.userId, emoji: '👍' }),
         });
-        console.log('Ответ на запрос реакции:', reactionRes.status, reactionRes.statusText);
-        if (!reactionRes.ok) {
-          const reactionErrorData = await reactionRes.text();
-          console.error('Ошибка добавления реакции:', reactionErrorData);
-        }
       }
       await fetchPosts();
     } catch (err: any) {
-      console.error('Post: Ошибка постановки/снятия лайка:', err);
+      console.error('Post: Ошибка лайка:', err);
     }
   };
 
@@ -101,7 +98,6 @@ export default function Post({
     if (!user) return;
     try {
       const authToken = localStorage.getItem('authToken') || '';
-      console.log('Отправка запроса на реакцию:', emoji);
       const res = await fetch(`/api/posts/${postId}/reactions`, {
         method: 'POST',
         headers: {
@@ -111,19 +107,14 @@ export default function Post({
         },
         body: JSON.stringify({ userId: user.userId, emoji }),
       });
-      console.log('Ответ на запрос реакции:', res.status, res.statusText);
-      if (!res.ok) {
-        const errorData = await res.text();
-        console.error('Ошибка ответа сервера:', errorData);
-        throw new Error(errorData || 'Не удалось добавить реакцию');
-      }
+      if (!res.ok) throw new Error(await res.text() || 'Не удалось добавить реакцию');
       const updatedPost = await res.json();
       const userNewReaction = updatedPost.reactions.find((r: { users: string[] }) => r.users.includes(user.userId));
       setUserReaction(userNewReaction ? userNewReaction.emoji : null);
       await fetchPosts();
       setShowReactions(false);
     } catch (err: any) {
-      console.error('Post: Ошибка добавления реакции:', err);
+      console.error('Post: Ошибка реакции:', err);
     }
   };
 
@@ -135,16 +126,9 @@ export default function Post({
       if (editImages.length > 0) {
         const formData = new FormData();
         editImages.forEach((file) => formData.append('files', file));
-        const uploadRes = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-        });
-        if (!uploadRes.ok) {
-          const errorData = await uploadRes.json();
-          throw new Error(errorData.error || 'Не удалось загрузить изображения');
-        }
-        const { files } = await uploadRes.json();
-        imagePaths = files;
+        const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+        if (!uploadRes.ok) throw new Error((await uploadRes.json()).error || 'Не удалось загрузить изображения');
+        imagePaths = (await uploadRes.json()).files;
       }
 
       const authToken = localStorage.getItem('authToken') || '';
@@ -157,14 +141,11 @@ export default function Post({
         },
         body: JSON.stringify({ content: editContent, images: imagePaths }),
       });
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Не удалось обновить пост');
-      }
+      if (!res.ok) throw new Error((await res.json()).error || 'Не удалось обновить пост');
       setIsEditing(false);
       await fetchPosts();
     } catch (err: any) {
-      console.error('Post: Ошибка обновления поста:', err);
+      console.error('Post: Ошибка редактирования:', err);
     }
   };
 
@@ -174,24 +155,18 @@ export default function Post({
       const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch(`/api/posts/${postId}`, {
         method: 'DELETE',
-        headers: {
-          'x-user-id': user.userId,
-          'Authorization': `Bearer ${authToken}`,
-        },
+        headers: { 'x-user-id': user.userId, 'Authorization': `Bearer ${authToken}` },
       });
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Не удалось удалить пост');
-      }
+      if (!res.ok) throw new Error((await res.json()).error || 'Не удалось удалить пост');
       await fetchPosts();
     } catch (err: any) {
-      console.error('Post: Ошибка удаления поста:', err);
+      console.error('Post: Ошибка удаления:', err);
     }
   };
 
   const handleAddEmoji = (emoji: string) => {
     setEditContent((prev) => prev + emoji);
-    setShowEmojiPicker(false); // Закрываем меню после выбора
+    setShowEmojiPicker(false);
   };
 
   const avatarUrl = userAvatar && userAvatar.trim() && userAvatar !== '/default-avatar.png'
@@ -212,10 +187,7 @@ export default function Post({
             width={40}
             height={40}
             className="telegram-post-avatar me-3"
-            onError={(e) => {
-              console.error('Post: Ошибка загрузки аватара:', avatarUrl);
-              e.currentTarget.src = '/default-avatar.png';
-            }}
+            onError={(e) => { e.currentTarget.src = '/default-avatar.png'; }}
           />
           <div>
             <Card.Title className="telegram-post-username">{username}</Card.Title>
@@ -245,12 +217,7 @@ export default function Post({
                 {showEmojiPicker && (
                   <div className="emoji-picker position-absolute bg-light border rounded p-2" style={{ zIndex: 1000, top: '100%', right: 0 }}>
                     {['👍', '❤️', '😂', '😢', '😮', '🤡', '😡', '🤯', '🤩', '👏', '🙌', '🔥', '🎉'].map((emoji) => (
-                      <Button
-                        key={emoji}
-                        variant="link"
-                        onClick={() => handleAddEmoji(emoji)}
-                        style={{ padding: '2px 6px', fontSize: '1.2rem', lineHeight: 1 }}
-                      >
+                      <Button key={emoji} variant="link" onClick={() => handleAddEmoji(emoji)} style={{ padding: '2px 6px', fontSize: '1.2rem', lineHeight: 1 }}>
                         {emoji}
                       </Button>
                     ))}
@@ -265,8 +232,8 @@ export default function Post({
                 accept="image/*"
                 multiple
                 onChange={(e) => {
-                  const files = (e.target as HTMLInputElement).files;
-                  if (files) setEditImages(Array.from(files));
+                  const target = e.target as HTMLInputElement;
+                  if (target.files) setEditImages(Array.from(target.files));
                 }}
                 className="telegram-post-file-input"
               />
@@ -286,26 +253,13 @@ export default function Post({
             {images && images.length > 0 && (
               <div className="mb-3 d-flex flex-wrap gap-2">
                 {images.map((image, index) => (
-                  <Image
-                    key={index}
-                    src={image}
-                    thumbnail
-                    className="telegram-post-image"
-                  />
+                  <Image key={index} src={image} thumbnail className="telegram-post-image" />
                 ))}
               </div>
             )}
             <div className="d-flex gap-3 align-items-center">
-              <div
-                className="position-relative"
-                onMouseEnter={() => setShowReactions(true)}
-                onMouseLeave={() => setShowReactions(false)}
-              >
-                <Button
-                  variant={userLiked ? 'primary' : 'outline-primary'}
-                  onClick={handleLike}
-                  className="telegram-post-like-button"
-                >
+              <div className="position-relative" onMouseEnter={() => setShowReactions(true)} onMouseLeave={() => setShowReactions(false)}>
+                <Button variant={userLiked ? 'primary' : 'outline-primary'} onClick={handleLike} className="telegram-post-like-button">
                   <HandThumbsUp className="me-1" /> Лайк ({likes.length})
                 </Button>
                 {showReactions && (
@@ -316,18 +270,10 @@ export default function Post({
               </div>
               {user && user.userId === userId && (
                 <>
-                  <Button
-                    variant="outline-secondary"
-                    onClick={() => setIsEditing(true)}
-                    className="telegram-post-edit-button"
-                  >
+                  <Button variant="outline-secondary" onClick={() => setIsEditing(true)} className="telegram-post-edit-button">
                     <PencilSquare className="me-1" /> Редактировать
                   </Button>
-                  <Button
-                    variant="outline-danger"
-                    onClick={handleDelete}
-                    className="telegram-post-delete-button"
-                  >
+                  <Button variant="outline-danger" onClick={handleDelete} className="telegram-post-delete-button">
                     <Trash className="me-1" /> Удалить
                   </Button>
                 </>
@@ -341,6 +287,16 @@ export default function Post({
                   </ListGroup.Item>
                 ))}
               </ListGroup>
+            )}
+            <Button variant="link" onClick={() => setShowComments(!showComments)} className="mt-2">
+              {showComments ? 'Скрыть комментарии' : 'Показать комментарии'} ({comments.length})
+            </Button>
+            {showComments && (
+              <div className="mt-2">
+                {comments.map((comment) => (
+                  <Comment key={comment._id} {...comment} />
+                ))}
+              </div>
             )}
           </>
         )}

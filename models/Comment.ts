@@ -1,16 +1,17 @@
-// app/models/Comment.ts
-import mongoose, { Schema, Types } from 'mongoose';
+import mongoose, { Schema, Types, Document } from 'mongoose';
 
-interface IComment {
-  userId: Types.ObjectId;
-  content: string; // Changed from 'comment' to 'content' for consistency
-  createdAt: number;
+interface IComment extends Document {
+  userId: Types.ObjectId; // Временно используем ObjectId без рефа, если User отсутствует
+  postId: Types.ObjectId;
+  content: string;
+  createdAt: Date;
 }
 
 const CommentSchema = new Schema<IComment>({
-  userId: { type: Schema.Types.ObjectId, ref: 'user', required: true },
+  userId: { type: Schema.Types.ObjectId, required: true }, // Убери ref: 'User' пока
+  postId: { type: Schema.Types.ObjectId, ref: 'Post', required: true },
   content: { type: String, required: true },
-  createdAt: { type: Number, default: Date.now },
+  createdAt: { type: Date, default: Date.now },
 });
 
-export default mongoose.models.comment || mongoose.model<IComment>('Comment', CommentSchema);
+export default mongoose.models.Comment || mongoose.model<IComment>('Comment', CommentSchema);

@@ -1,11 +1,15 @@
-import mongoose from 'mongoose';
+import mongoose, { Mongoose } from 'mongoose';
+
+// Определяем тип для моделей Mongoose
+type MongooseModels = typeof mongoose.models;
 
 // Расширяем тип global для добавления свойства mongoose
 declare global {
   // eslint-disable-next-line no-var
   var mongoose: {
-    conn: mongoose.Mongoose | null;
-    promise: Promise<mongoose.Mongoose> | null;
+    conn: Mongoose | null;
+    promise: Promise<Mongoose> | null;
+    models: MongooseModels;
   } | undefined;
 }
 
@@ -16,17 +20,19 @@ if (!MONGODB_URI) {
 }
 
 // Инициализируем кэш для соединения
-let cached: { conn: mongoose.Mongoose | null; promise: Promise<mongoose.Mongoose> | null } = global.mongoose || {
-  conn: null,
-  promise: null,
-};
+let cached: { conn: Mongoose | null; promise: Promise<Mongoose> | null; models: MongooseModels } =
+  global.mongoose || {
+    conn: null,
+    promise: null,
+    models: {},
+  };
 
 // Сохраняем кэш в global
 if (!global.mongoose) {
   global.mongoose = cached;
 }
 
-async function connectToDB() {
+async function connectToDB(): Promise<Mongoose> {
   if (cached.conn) {
     console.log('MongoDB: Используется существующее соединение');
     return cached.conn;
@@ -40,6 +46,7 @@ async function connectToDB() {
     console.log('MongoDB: Подключение к базе данных...');
     cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongooseInstance) => {
       console.log('MongoDB: Соединение установлено');
+      cached.models = mongooseInstance.models;
       return mongooseInstance;
     });
   }

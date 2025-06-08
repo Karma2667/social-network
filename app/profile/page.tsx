@@ -6,7 +6,6 @@ import { useAuth } from '@/app/lib/AuthContext';
 import { Container, Row, Col, Form, Button, Alert, Modal, FormCheck, Image } from 'react-bootstrap';
 import Post from '@/app/Components/Post';
 import { Paperclip } from 'react-bootstrap-icons';
-import EmojiPicker from '@/app/Components/EmojiPicker';
 
 interface ProfileData {
   _id: string;
@@ -17,15 +16,24 @@ interface ProfileData {
 }
 
 interface PostData {
-  _id: string;
-  userId: string;
   username: string;
   content: string;
-  images: string[];
+  createdAt: string | number;
+  userId: string;
   likes: string[];
   reactions: { emoji: string; users: string[] }[];
-  createdAt: string;
+  images: string[];
+  postId: string;
+  fetchPosts: () => Promise<void>;
   userAvatar?: string;
+  comments?: CommentProps[];
+}
+
+interface CommentProps {
+  _id: string;
+  userId: { _id: string; username: string };
+  content: string;
+  createdAt: string;
 }
 
 const PREDEFINED_INTERESTS = [
@@ -62,10 +70,7 @@ export default function ProfilePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const checkDesktop = () => {
-      const desktop = window.innerWidth > 768;
-      setIsDesktop(desktop);
-    };
+    const checkDesktop = () => setIsDesktop(window.innerWidth > 768);
     checkDesktop();
     window.addEventListener('resize', checkDesktop);
     return () => window.removeEventListener('resize', checkDesktop);
@@ -112,24 +117,26 @@ export default function ProfilePage() {
       });
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.error || 'Не удалось загрузить посты');
+        console.error('Fetch posts error response:', errorData);
+        throw new Error(`Не удалось загрузить посты: ${errorData.error || res.statusText}`);
       }
       const data = await res.json();
-      setPosts(data);
+      console.log('Fetched posts:', data);
+      setPosts(data.map((post: any) => ({
+        ...post,
+        fetchPosts,
+      })));
     } catch (err: any) {
       console.error('Profile: Ошибка загрузки постов:', err);
-      setError('Ошибка загрузки постов');
+      setError(`Ошибка загрузки постов: ${err.message}`);
     }
   };
 
   useEffect(() => {
     if (!isInitialized || !user) return;
-
     const loadData = async () => {
       await fetchProfile();
-      if (isOwnProfile()) {
-        await fetchPosts();
-      }
+      if (isOwnProfile()) await fetchPosts();
       setLoading(false);
     };
     loadData();
@@ -209,12 +216,7 @@ export default function ProfilePage() {
             'Authorization': `Bearer ${authToken}`,
           };
 
-      const res = await fetch(url, {
-        method,
-        headers,
-        body,
-      });
-
+      const res = await fetch(url, { method, headers, body });
       if (!res.ok) {
         const errorData = await res.json();
         throw new Error(errorData.error || 'Ошибка с постом');
@@ -223,13 +225,13 @@ export default function ProfilePage() {
       const updatedPost = await res.json();
       setPosts((prev) =>
         editingPostId
-          ? prev.map((post) => (post._id === editingPostId ? updatedPost : post))
-          : [updatedPost, ...prev]
+          ? prev.map((post) => (post.postId === editingPostId ? { ...updatedPost, fetchPosts } : post))
+          : [{ ...updatedPost, fetchPosts }, ...prev]
       );
       setPostContent('');
       setPostImages([]);
       setEditingPostId(null);
-      await fetchPosts();
+      await fetchPosts(); // Обновляем список после создания/редактирования
     } catch (err: any) {
       console.error('Ошибка с постом:', err.message);
       setError(err.message);
@@ -238,21 +240,18 @@ export default function ProfilePage() {
     }
   };
 
-  const handleEditPost = (post: PostData) => {
+  const handleEditPost = (postId: string) => {
     if (!isOwnProfile()) return;
-    setPostContent(post.content);
-    setEditingPostId(post._id);
-    setPostImages([]);
-  };
-
-  const handleEmojiSelect = (emoji: string) => {
-    setPostContent((prev) => prev + emoji);
+    const post = posts.find((p) => p.postId === postId);
+    if (post) {
+      setPostContent(post.content);
+      setEditingPostId(postId);
+      setPostImages([]);
+    }
   };
 
   const handleFileSelect = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
+    if (fileInputRef.current) fileInputRef.current.click();
   };
 
   const handleInterestToggle = (interest: string) => {
@@ -321,26 +320,16 @@ export default function ProfilePage() {
         },
         body: JSON.stringify({ toUserId: profile._id, action }),
       });
-      if (res.ok) {
-        setIsFollowing(!isFollowing);
-      } else {
-        const errorData = await res.json();
-        setError(errorData.error || 'Ошибка при подписке');
-      }
+      if (res.ok) setIsFollowing(!isFollowing);
     } catch (error: any) {
       console.error('Ошибка при подписке:', error.message);
       setError('Ошибка при подписке');
     }
   };
 
-  const isOwnProfile = () => {
-    return !profileId || (user && profile && user.userId === profile._id);
-  };
+  const isOwnProfile = () => !profileId || (user && profile && user.userId === profile._id);
 
-  if (!isInitialized || loading) {
-    return <div>Загрузка...</div>;
-  }
-
+  if (!isInitialized || loading) return <div>Загрузка...</div>;
   if (!user || !profile) {
     router.replace('/login');
     return null;
@@ -445,7 +434,7 @@ export default function ProfilePage() {
                   <Button
                     variant={isFollowing ? 'secondary' : 'outline-primary'}
                     onClick={handleFollowToggle}
-                    className="telegram-profile-button mt-2"
+                    className="telegram-post-button mt-2"
                   >
                     {isFollowing ? 'Отписаться' : 'Подписаться'}
                   </Button>
@@ -472,19 +461,16 @@ export default function ProfilePage() {
                     className="position-absolute"
                     style={{ bottom: '10px', right: '10px', display: 'flex', alignItems: 'center' }}
                   >
-                    <EmojiPicker onSelect={handleEmojiSelect} />
-                    {!editingPostId && (
-                      <Button
-                        variant="link"
-                        onClick={handleFileSelect}
-                        disabled={submitting}
-                        className="ms-2"
-                        style={{ color: '#0088cc' }}
-                        title="Прикрепить изображения"
-                      >
-                        <Paperclip size={24} />
-                      </Button>
-                    )}
+                    <Button
+                      variant="link"
+                      onClick={handleFileSelect}
+                      disabled={submitting}
+                      className="ms-2"
+                      style={{ color: '#0088cc' }}
+                      title="Прикрепить изображения"
+                    >
+                      <Paperclip size={24} />
+                    </Button>
                   </div>
                   <input
                     type="file"
@@ -538,17 +524,18 @@ export default function ProfilePage() {
             {posts.length > 0 ? (
               posts.map((post) => (
                 <Post
-                  key={post._id}
-                  postId={post._id}
+                  key={post.postId}
                   username={post.username || currentUsername || 'Unknown User'}
-                  userId={post.userId}
                   content={post.content}
                   createdAt={post.createdAt}
-                  images={post.images || []}
+                  userId={post.userId}
                   likes={post.likes || []}
                   reactions={post.reactions || []}
-                  fetchPosts={fetchPosts}
+                  images={post.images || []}
+                  postId={post.postId}
+                  fetchPosts={post.fetchPosts}
                   userAvatar={post.userAvatar || '/default-avatar.png'}
+                  comments={post.comments || []}
                 />
               ))
             ) : (
@@ -649,7 +636,7 @@ export default function ProfilePage() {
                     <Button
                       variant={isFollowing ? 'secondary' : 'outline-primary'}
                       onClick={handleFollowToggle}
-                      className="telegram-profile-button mt-2"
+                      className="telegram-post-button mt-2"
                     >
                       {isFollowing ? 'Отписаться' : 'Подписаться'}
                     </Button>

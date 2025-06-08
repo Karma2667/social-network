@@ -1,28 +1,65 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
+import connectToDB from '@/app/lib/mongoDB';
 import Post from '@/models/Post';
+import Comment from '@/models/Comment';
 
 export async function GET(request: Request) {
   console.time('GET /api/posts: Total');
   console.log('GET /api/posts: Запрос получен');
   try {
-    await dbConnect();
+    const mongoose = await connectToDB();
     console.log('GET /api/posts: MongoDB подключен');
 
     const userId = request.headers.get('x-user-id');
+    console.log('GET /api/posts: Получен userId:', userId);
 
     if (!userId) {
       console.log('GET /api/posts: Отсутствует x-user-id');
       return NextResponse.json({ error: 'Требуется userId' }, { status: 400 });
     }
 
-    console.log('GET /api/posts: Параметры:', { userId });
+    if (typeof userId !== 'string') {
+      console.log('GET /api/posts: userId имеет некорректный тип:', typeof userId);
+      return NextResponse.json({ error: 'Некорректный userId' }, { status: 400 });
+    }
 
-    const posts = await Post.find({ userId }).sort({ createdAt: -1 }).lean();
+    let postsQuery = Post.find({ userId }).sort({ createdAt: -1 }).lean();
+    if (mongoose.models.Comment) {
+      postsQuery = postsQuery.populate('comments');
+    } else {
+      console.warn('GET /api/posts: Модель Comment не зарегистрирована, пропускаем populate');
+    }
 
-    console.log('GET /api/posts: Посты загружены:', posts);
+    const posts: any[] = await postsQuery;
+
+    if (!posts || posts.length === 0) {
+      console.log('GET /api/posts: Посты не найдены для userId:', userId);
+      return NextResponse.json({ message: 'Посты не найдены' }, { status: 200 });
+    }
+
+    const formattedPosts = posts.map((post: any) => ({
+      username: 'Unknown User',
+      content: post.content,
+      createdAt: post.createdAt.toISOString(),
+      userId: post.userId,
+      likes: post.likes || [],
+      reactions: post.reactions || [],
+      images: post.images || [],
+      postId: post._id.toString(),
+      userAvatar: '/default-avatar.png',
+      comments: post.comments
+        ? post.comments.map((comment: any) => ({
+            _id: comment._id.toString(),
+            userId: comment.userId,
+            content: comment.content,
+            createdAt: comment.createdAt.toISOString(),
+          }))
+        : [],
+    }));
+
+    console.log('GET /api/posts: Посты загружены:', formattedPosts);
     console.timeEnd('GET /api/posts: Total');
-    return NextResponse.json(posts, { status: 200 });
+    return NextResponse.json(formattedPosts, { status: 200 });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
     console.error('GET /api/posts: Ошибка:', errorMessage, error);
@@ -35,7 +72,7 @@ export async function POST(request: Request) {
   console.time('POST /api/posts: Total');
   console.log('POST /api/posts: Запрос получен');
   try {
-    await dbConnect();
+    await connectToDB();
     console.log('POST /api/posts: MongoDB подключен');
 
     const userId = request.headers.get('x-user-id');
@@ -76,11 +113,22 @@ export async function POST(request: Request) {
       images = uploadedFiles;
     }
 
-    const post = await Post.create({ userId, content, images });
+    const post = await Post.create({ userId, content, images, comments: [] });
     console.log('POST /api/posts: Пост создан:', post);
 
     console.timeEnd('POST /api/posts: Total');
-    return NextResponse.json(post, { status: 201 });
+    return NextResponse.json({
+      username: 'Unknown User',
+      content: post.content,
+      createdAt: post.createdAt.toISOString(),
+      userId: post.userId,
+      likes: post.likes || [],
+      reactions: post.reactions || [],
+      images: post.images || [],
+      postId: post._id.toString(),
+      userAvatar: '/default-avatar.png',
+      comments: [],
+    }, { status: 201 });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
     console.error('POST /api/posts: Подробная ошибка:', errorMessage, error);
@@ -89,16 +137,15 @@ export async function POST(request: Request) {
   }
 }
 
-// Остальные методы (PUT, DELETE) остаются без изменений
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   console.time('PUT /api/posts/[id]: Total');
   console.log('PUT /api/posts/[id]: Запрос получен, id:', params.id);
   try {
-    await dbConnect();
+    await connectToDB();
     console.log('PUT /api/posts/[id]: MongoDB подключен');
 
     const userId = request.headers.get('x-user-id');
-    const { content } = await request.json();
+    const { content, images } = await request.json();
 
     if (!userId) {
       console.log('PUT /api/posts/[id]: Отсутствует x-user-id');
@@ -119,12 +166,24 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     }
 
     post.content = content;
+    if (images) post.images = images;
     post.updatedAt = new Date();
     await post.save();
 
     console.log('PUT /api/posts/[id]: Пост обновлен:', post);
     console.timeEnd('PUT /api/posts/[id]: Total');
-    return NextResponse.json(post, { status: 200 });
+    return NextResponse.json({
+      username: 'Unknown User',
+      content: post.content,
+      createdAt: post.createdAt.toISOString(),
+      userId: post.userId,
+      likes: post.likes || [],
+      reactions: post.reactions || [],
+      images: post.images || [],
+      postId: post._id.toString(),
+      userAvatar: '/default-avatar.png',
+      comments: post.comments || [],
+    }, { status: 200 });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
     console.error('PUT /api/posts/[id]: Ошибка:', errorMessage, error);
@@ -137,7 +196,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
   console.time('DELETE /api/posts/[id]: Total');
   console.log('DELETE /api/posts/[id]: Запрос получен, id:', params.id);
   try {
-    await dbConnect();
+    await connectToDB();
     console.log('DELETE /api/posts/[id]: MongoDB подключен');
 
     const userId = request.headers.get('x-user-id');

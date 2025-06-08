@@ -152,8 +152,8 @@ export default function Home() {
         {posts.length > 0 ? (
           posts.map((post) => (
             <Post
-              key={post._id}
-              postId={post._id}
+              key={post.postId} // Используем postId вместо _id
+              postId={post.postId}
               username={post.username || 'Unknown User'}
               userId={post.userId}
               content={post.content}
@@ -163,6 +163,7 @@ export default function Home() {
               reactions={post.reactions || []}
               fetchPosts={fetchPosts}
               userAvatar={post.userAvatar || '/default-avatar.png'}
+              comments={post.comments || []} // Передаём комментарии из API
             />
           ))
         ) : (
