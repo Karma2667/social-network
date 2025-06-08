@@ -24,7 +24,7 @@ interface PostProps {
 
 interface CommentProps {
   _id: string;
-  userId: { _id: string; username: string }; // Изменён с string на объект
+  userId: { _id: string; username: string };
   content: string;
   createdAt: string;
 }
@@ -51,6 +51,8 @@ export default function Post({
   const [showReactions, setShowReactions] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showComments, setShowComments] = useState(false);
+  const [newComment, setNewComment] = useState('');
+  const [submittingComment, setSubmittingComment] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -167,6 +169,33 @@ export default function Post({
   const handleAddEmoji = (emoji: string) => {
     setEditContent((prev) => prev + emoji);
     setShowEmojiPicker(false);
+  };
+
+  const handleAddComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !newComment.trim()) return;
+    setSubmittingComment(true);
+
+    try {
+      const authToken = localStorage.getItem('authToken') || '';
+      const res = await fetch('/api/comments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': user.userId,
+          'Authorization': `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ postId, content: newComment }),
+      });
+
+      if (!res.ok) throw new Error(await res.text() || 'Не удалось добавить комментарий');
+      setNewComment('');
+      await fetchPosts();
+    } catch (err: any) {
+      console.error('Post: Ошибка добавления комментария:', err);
+    } finally {
+      setSubmittingComment(false);
+    }
   };
 
   const avatarUrl = userAvatar && userAvatar.trim() && userAvatar !== '/default-avatar.png'
@@ -293,9 +322,25 @@ export default function Post({
             </Button>
             {showComments && (
               <div className="mt-2">
-                {comments.map((comment) => (
-                  <Comment key={comment._id} {...comment} />
-                ))}
+                <ListGroup>
+                  {comments.map((comment) => (
+                    <Comment key={comment._id} {...comment} />
+                  ))}
+                </ListGroup>
+                <Form onSubmit={handleAddComment} className="mt-3">
+                  <Form.Group>
+                    <Form.Control
+                      as="textarea"
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      placeholder="Напишите комментарий..."
+                      disabled={submittingComment}
+                    />
+                  </Form.Group>
+                  <Button variant="primary" type="submit" disabled={submittingComment} className="mt-2">
+                    {submittingComment ? 'Отправка...' : 'Отправить'}
+                  </Button>
+                </Form>
               </div>
             )}
           </>
