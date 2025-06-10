@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
-import connectToDB from '@/app/lib/mongoDB';
+import dbConnect from '@/app/lib/mongoDB';
 import Post from '@/models/Post';
-import Comment from '@/models/Comment';
+import User from '@/models/User';
 
 export async function GET(request: Request) {
   console.time('GET /api/posts: Total');
   console.log('GET /api/posts: Запрос получен');
   try {
-    const mongoose = await connectToDB();
+    const mongoose = await dbConnect();
     console.log('GET /api/posts: MongoDB подключен');
 
     const userId = request.headers.get('x-user-id');
@@ -23,10 +23,27 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Некорректный userId' }, { status: 400 });
     }
 
-    let postsQuery = Post.find({ userId }).sort({ createdAt: -1 }).lean();
+    let postsQuery = Post.find().sort({ createdAt: -1 }).lean();
+    console.log('GET /api/posts: Построен запрос к базе данных');
+
+    // Популяция данных пользователя
+    postsQuery = postsQuery.populate({
+      path: 'userId',
+      model: 'User',
+      select: 'username userAvatar',
+    });
+
     if (mongoose.models.Comment) {
       try {
-        postsQuery = postsQuery.populate('comments');
+        postsQuery = postsQuery.populate({
+          path: 'comments',
+          model: 'Comment',
+          populate: {
+            path: 'userId',
+            model: 'User',
+            select: 'username',
+          },
+        });
         console.log('GET /api/posts: Популяция комментариев выполнена');
       } catch (populateError: unknown) {
         console.warn('GET /api/posts: Ошибка при популяции комментариев:', populateError);
@@ -38,33 +55,47 @@ export async function GET(request: Request) {
     const posts: any[] = await postsQuery;
 
     if (!posts || posts.length === 0) {
-      console.log('GET /api/posts: Посты не найдены для userId:', userId);
+      console.log('GET /api/posts: Посты не найдены');
       return NextResponse.json({ message: 'Посты не найдены' }, { status: 200 });
     }
 
     const formattedPosts = posts.map((post: any) => {
-      console.log('GET /api/posts: Обработка поста:', post);
+      console.log('GET /api/posts: Обработка поста:', post._id, 'Комментарии:', post.comments);
       return {
-        username: 'Unknown User',
+        username: post.userId?.username || 'Unknown User',
         content: post.content || '',
-        createdAt: post.createdAt ? post.createdAt.toISOString() : new Date().toISOString(),
-        userId: post.userId.toString(),
+        createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : new Date().toISOString(),
+        userId: post.userId ? post.userId._id.toString() : '',
         likes: post.likes || [],
         reactions: post.reactions || [],
         images: post.images || [],
         postId: post._id.toString(),
-        userAvatar: '/default-avatar.png',
+        userAvatar: post.userId?.userAvatar || '/default-avatar.png',
         comments: Array.isArray(post.comments)
           ? post.comments.map((comment: any) => {
-              console.log('GET /api/posts: Обработка комментария:', comment);
+              console.log('GET /api/posts: Обработка комментария:', comment._id, 'createdAt:', comment.createdAt);
+              let commentCreatedAt = comment.createdAt;
+              if (commentCreatedAt) {
+                if (typeof commentCreatedAt === 'string') {
+                  commentCreatedAt = new Date(commentCreatedAt);
+                } else if (!(commentCreatedAt instanceof Date)) {
+                  commentCreatedAt = new Date();
+                  console.warn('GET /api/posts: createdAt не является Date, установлен текущий timestamp:', comment._id);
+                }
+              } else {
+                commentCreatedAt = new Date();
+                console.warn('GET /api/posts: createdAt отсутствует, установлен текущий timestamp:', comment._id);
+              }
               return {
                 _id: comment._id ? comment._id.toString() : '',
                 userId: comment.userId
-                  ? { _id: comment.userId.toString(), username: comment.userId.username || 'Unknown User' }
+                  ? { _id: comment.userId._id.toString(), username: comment.userId.username || 'Unknown User' }
                   : { _id: '', username: 'Unknown User' },
                 content: comment.content || '',
-                createdAt: comment.createdAt ? comment.createdAt.toISOString() : new Date().toISOString(),
+                createdAt: commentCreatedAt.toISOString(),
                 images: comment.images || [],
+                likes: comment.likes || [],
+                reactions: comment.reactions || [],
               };
             })
           : [],
@@ -86,7 +117,7 @@ export async function POST(request: Request) {
   console.time('POST /api/posts: Total');
   console.log('POST /api/posts: Запрос получен');
   try {
-    await connectToDB();
+    await dbConnect();
     const userId = request.headers.get('x-user-id');
     const formData = await request.formData();
     const content = formData.get('content') as string;
@@ -105,17 +136,18 @@ export async function POST(request: Request) {
       images = (await uploadRes.json()).files;
     }
 
+    const user = await User.findById(userId).select('username userAvatar');
     const post = await Post.create({ userId, content, images, comments: [] });
     return NextResponse.json({
-      username: 'Unknown User',
+      username: user?.username || 'Unknown User',
       content: post.content,
       createdAt: post.createdAt.toISOString(),
-      userId: post.userId,
+      userId: post.userId.toString(),
       likes: post.likes || [],
       reactions: post.reactions || [],
       images: post.images || [],
       postId: post._id.toString(),
-      userAvatar: '/default-avatar.png',
+      userAvatar: user?.userAvatar || '/default-avatar.png',
       comments: [],
     }, { status: 201 });
   } catch (error: unknown) {
@@ -130,7 +162,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
   console.time('PUT /api/posts/[id]: Total');
   console.log('PUT /api/posts/[id]: Запрос получен, id:', params.id);
   try {
-    await connectToDB();
+    await dbConnect();
     const userId = request.headers.get('x-user-id');
     const { content, images } = await request.json();
 
@@ -138,7 +170,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ error: 'Требуется userId и content' }, { status: 400 });
     }
 
-    const post = await Post.findOne({ _id: params.id, userId });
+    const post = await Post.findOne({ _id: params.id, userId }).populate('userId', 'username userAvatar');
     if (!post) return NextResponse.json({ error: 'Пост не найден' }, { status: 404 });
 
     post.content = content;
@@ -147,15 +179,15 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     await post.save();
 
     return NextResponse.json({
-      username: 'Unknown User',
+      username: post.userId?.username || 'Unknown User',
       content: post.content,
       createdAt: post.createdAt.toISOString(),
-      userId: post.userId,
+      userId: post.userId._id.toString(),
       likes: post.likes || [],
       reactions: post.reactions || [],
       images: post.images || [],
       postId: post._id.toString(),
-      userAvatar: '/default-avatar.png',
+      userAvatar: post.userId?.userAvatar || '/default-avatar.png',
       comments: post.comments || [],
     }, { status: 200 });
   } catch (error: unknown) {
@@ -170,7 +202,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
   console.time('DELETE /api/posts/[id]: Total');
   console.log('DELETE /api/posts/[id]: Запрос получен, id:', params.id);
   try {
-    await connectToDB();
+    await dbConnect();
     const userId = request.headers.get('x-user-id');
 
     if (!userId) return NextResponse.json({ error: 'Требуется userId' }, { status: 400 });

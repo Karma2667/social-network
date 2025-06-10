@@ -1,5 +1,4 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
-import Comment from './Comment';
 
 export interface PostDocument extends Document {
   userId: Types.ObjectId;
@@ -10,11 +9,11 @@ export interface PostDocument extends Document {
   reactions: { emoji: string; users: string[] }[];
   images: string[];
   comments: Types.ObjectId[];
-  username?: string; // Добавь, если нужно
-  userAvatar?: string; // Добавь, если нужно
+  username?: string;
+  userAvatar?: string;
 }
 
-const PostSchema = new Schema<PostDocument>(
+const PostSchema = new mongoose.Schema<PostDocument>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     content: { type: String, required: true },
@@ -24,8 +23,8 @@ const PostSchema = new Schema<PostDocument>(
     reactions: [{ emoji: String, users: [{ type: String }] }],
     images: [{ type: String, default: [] }],
     comments: [{ type: Schema.Types.ObjectId, ref: 'Comment', default: [] }],
-    username: { type: String }, // Добавь, если нужно
-    userAvatar: { type: String }, // Добавь, если нужно
+    username: { type: String }, // Опционально, если нужно хранить локально
+    userAvatar: { type: String }, // Опционально, если нужно хранить локально
   },
   { timestamps: true }
 );

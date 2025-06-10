@@ -21,7 +21,7 @@ export default function Navbar() {
 
   return (
     <BootstrapNavbar bg="light" expand="lg" className="telegram-header">
-      <BootstrapNavbar.Brand as={Link} href="/">Социальная сеть</BootstrapNavbar.Brand>
+      <BootstrapNavbar.Brand as={Link} href="/">Snapgramm</BootstrapNavbar.Brand>
       <BootstrapNavbar.Toggle aria-controls="basic-navbar-nav" />
       <BootstrapNavbar.Collapse id="basic-navbar-nav">
         <Nav className="me-auto">
@@ -31,7 +31,7 @@ export default function Navbar() {
               <Nav.Link as={Link} href="/search">Поиск</Nav.Link>
               <Nav.Link as={Link} href="/profile">Профиль</Nav.Link>
               <Nav.Link as={Link} href="/chat">Чаты</Nav.Link>
-              <Nav.Link as={Link} href="/connections">Контакты</Nav.Link>
+              <Nav.Link as={Link} href="/connections">Друзья</Nav.Link>
               <Nav.Link onClick={handleLogout}>Выйти</Nav.Link>
             </>
           ) : (

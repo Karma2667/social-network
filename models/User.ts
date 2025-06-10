@@ -35,7 +35,7 @@ export interface LeanUser {
   email?: string;
   password?: string;
   bio?: string;
-  interests?: string[]; // Сделали необязательным
+  interests?: string[];
   createdAt?: Date;
   posts?: any[];
   following?: { _id: string; username: string }[];
@@ -58,7 +58,7 @@ const UserSchema = new Schema<IUser>({
     default: [], 
     enum: INTERESTS,
     validate: {
-      validator: (v: string[]) => v.length <= 5, // Ограничение до 5 интересов
+      validator: (v: string[]) => v.length <= 5,
       message: 'Максимум 5 интересов'
     }
   }],
