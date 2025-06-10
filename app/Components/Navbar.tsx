@@ -32,6 +32,7 @@ export default function Navbar() {
               <Nav.Link as={Link} href="/profile">Профиль</Nav.Link>
               <Nav.Link as={Link} href="/chat">Чаты</Nav.Link>
               <Nav.Link as={Link} href="/connections">Друзья</Nav.Link>
+              <Nav.Link as={Link} href="/communities">Сообщества</Nav.Link>
               <Nav.Link onClick={handleLogout}>Выйти</Nav.Link>
             </>
           ) : (

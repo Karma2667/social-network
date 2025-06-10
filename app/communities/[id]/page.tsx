@@ -10,11 +10,13 @@ import { use } from 'react';
 interface PostData {
   _id: string;
   content: string;
-  user: { _id: string; username: string; avatar?: string };
+  user: { _id: string; username: string; avatar?: string } | null;
   community?: { _id: string; name: string };
   createdAt: string;
   likes: string[];
+  reactions: { emoji: string; users: string[] }[];
   images: string[];
+  comments: any[];
 }
 
 interface CommunityData {
@@ -36,10 +38,14 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
   const [error, setError] = useState<string | null>(null);
 
   const fetchCommunity = useCallback(async () => {
+    if (!id || !userId) {
+      console.log('CommunityPage: Пропуск загрузки сообщества, id или userId отсутствуют:', { id, userId });
+      return;
+    }
     try {
       console.log('CommunityPage: Загрузка сообщества с ID:', id);
       const res = await fetch(`/api/communities/${id}`, {
-        headers: { 'x-user-id': userId || '' },
+        headers: { 'x-user-id': userId },
       });
       if (!res.ok) {
         const errorData = await res.json();
@@ -54,10 +60,14 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
   }, [id, userId]);
 
   const fetchPosts = useCallback(async () => {
+    if (!id || !userId) {
+      console.log('CommunityPage: Пропуск загрузки постов, id или userId отсутствуют:', { id, userId });
+      return;
+    }
     try {
       console.log('CommunityPage: Загрузка постов для сообщества:', id);
       const res = await fetch(`/api/posts?communityId=${id}`, {
-        headers: { 'x-user-id': userId || '' },
+        headers: { 'x-user-id': userId },
         cache: 'no-store',
       });
       if (!res.ok) {
@@ -65,7 +75,12 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
         throw new Error(errorData.error || 'Не удалось загрузить посты');
       }
       const data = await res.json();
-      setPosts(data || []);
+      // Проверка и приведение данных к нужному формату
+      const formattedPosts = data.map((post: any) => ({
+        ...post,
+        user: post.user || { _id: '', username: 'Unknown User', avatar: '/default-avatar.png' },
+      }));
+      setPosts(formattedPosts);
     } catch (err: any) {
       console.error('CommunityPage: Ошибка загрузки постов:', err);
       setError(err.message);
@@ -73,14 +88,14 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
   }, [id, userId]);
 
   useEffect(() => {
-    if (!userId) {
-      console.log('CommunityPage: Нет userId, ожидание перенаправления');
+    if (!userId || !id) {
+      console.log('CommunityPage: Ожидание userId или id, текущие значения:', { userId, id });
       setLoading(false);
       return;
     }
     setLoading(true);
     Promise.all([fetchCommunity(), fetchPosts()]).finally(() => setLoading(false));
-  }, [userId, fetchCommunity, fetchPosts]);
+  }, [userId, id, fetchCommunity, fetchPosts]);
 
   const handlePostSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,8 +103,8 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
       setError('Требуется текст поста');
       return;
     }
-    if (!userId) {
-      setError('Пользователь не аутентифицирован');
+    if (!userId || !id) {
+      setError('Пользователь не аутентифицирован или сообщество не выбрано');
       return;
     }
     try {
@@ -138,7 +153,7 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
   };
 
   if (loading) return <div>Загрузка...</div>;
-  if (!userId) return null;
+  if (!userId || !id) return <div>Пожалуйста, войдите и выберите сообщество (id: {id})</div>;
   if (error) return <div>Ошибка: {error}</div>;
 
   return (
@@ -190,19 +205,17 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
               posts.map((post) => (
                 <Post
                   key={post._id}
-                  username={
-                    post.community
-                      ? `${post.user?.username || 'Неизвестный'} в ${post.community.name}`
-                      : post.user?.username || 'Неизвестный'
-                  }
+                  username={post.user?.username || 'Неизвестный'}
                   content={post.content || 'Нет содержимого'}
                   createdAt={post.createdAt || Date.now()}
-                  userId={post.user?._id?.toString() || post.user?.toString() || 'unknown'}
-                  likes={post.likes?.map((id: any) => id.toString()) || []}
+                  userId={post.user?._id?.toString() || ''}
+                  likes={post.likes || []}
+                  reactions={post.reactions || []}
                   images={post.images || []}
                   postId={post._id.toString()}
                   fetchPosts={fetchPosts}
                   userAvatar={post.user?.avatar || '/default-avatar.png'}
+                  comments={post.comments || []}
                 />
               ))
             )}

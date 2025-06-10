@@ -25,7 +25,7 @@ interface PostProps {
 
 interface CommentProps {
   _id: string;
-  userId: { _id: string; username: string };
+  userId: { _id: string; username: string; avatar?: string };
   content: string;
   createdAt: string;
   likes?: string[];
@@ -71,6 +71,7 @@ export default function Post({
     console.log('Post: Инициализация с комментариями:', comments.map((c) => ({
       id: c._id,
       user: c.userId.username,
+      avatar: c.userId.avatar,
       content: c.content,
       likes: c.likes?.length,
       reactions: c.reactions?.map((r) => ({ emoji: r.emoji, users: r.users.length })),
@@ -195,7 +196,7 @@ export default function Post({
       const responseData = await res.json();
       const newCommentObj = {
         _id: responseData._id,
-        userId: { _id: user.userId, username: responseData.userId.username || user.username || 'Unknown' },
+        userId: { _id: user.userId, username: responseData.userId.username || user.username || 'Unknown', avatar: responseData.userId.avatar },
         content: responseData.content,
         createdAt: responseData.createdAt,
         likes: responseData.likes || [],
@@ -235,7 +236,11 @@ export default function Post({
       setComments((prevComments) =>
         prevComments.map((c) =>
           c._id === commentId
-            ? { ...c, ...updatedComment, userId: { _id: updatedComment.userId._id, username: updatedComment.userId.username || 'Unknown' } }
+            ? {
+                ...c,
+                ...updatedComment,
+                userId: { _id: updatedComment.userId._id, username: updatedComment.userId.username || 'Unknown', avatar: updatedComment.userId.avatar },
+              }
             : c
         )
       );
@@ -265,7 +270,11 @@ export default function Post({
       setComments((prevComments) =>
         prevComments.map((c) =>
           c._id === commentId
-            ? { ...c, ...updatedComment, userId: { _id: updatedComment.userId._id, username: updatedComment.userId.username || 'Unknown' } }
+            ? {
+                ...c,
+                ...updatedComment,
+                userId: { _id: updatedComment.userId._id, username: updatedComment.userId.username || 'Unknown', avatar: updatedComment.userId.avatar },
+              }
             : c
         )
       );
@@ -478,7 +487,7 @@ export default function Post({
                   {comments.map((comment) => (
                     <ListGroup.Item
                       key={comment._id}
-                      className="d-flex justify-content-between align-items-center"
+                      className="d-flex flex-column mb-3 p-3 border rounded"
                     >
                       {editingCommentId === comment._id ? (
                         <Form
@@ -508,51 +517,79 @@ export default function Post({
                         </Form>
                       ) : (
                         <>
-                          <Comment
-                            _id={comment._id}
-                            userId={{ _id: comment.userId._id, username: comment.userId.username || 'Unknown' }}
-                            content={comment.content}
-                            createdAt={comment.createdAt}
-                            likes={comment.likes || []}
-                            reactions={comment.reactions || []}
-                            images={comment.images || []}
-                          />
-                          <div className="ms-2">
-                            <div
-                              className="position-relative"
-                              onMouseEnter={() => setShowReactions(comment._id)}
-                              onMouseLeave={() => setShowReactions(null)}
-                            >
-                              <Button
-                                variant={comment.likes?.includes(user?.userId || '') ? 'primary' : 'outline-primary'}
-                                onClick={() => handleCommentLike(comment._id)}
-                                className="me-2"
-                                size="sm"
+                          {/* Блок 1: Имя пользователя, аватарка, время */}
+                          <div className="d-flex align-items-center mb-2">
+                            <Image
+                              src={comment.userId.avatar && comment.userId.avatar.trim() && comment.userId.avatar !== '/default-avatar.png'
+                                ? comment.userId.avatar
+                                : '/default-avatar.png'}
+                              roundedCircle
+                              width={30}
+                              height={30}
+                              className="me-2"
+                              onError={(e) => { e.currentTarget.src = '/default-avatar.png'; }}
+                            />
+                            <div>
+                              <Card.Title className="telegram-post-username mb-0">
+                                {comment.userId.username || 'Unknown User'}
+                              </Card.Title>
+                              <Card.Subtitle className="telegram-post-date">
+                                {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
+                              </Card.Subtitle>
+                            </div>
+                          </div>
+
+                          {/* Блок 2: Текст комментария */}
+                          <div className="mb-2">
+                            <Card.Text>{comment.content}</Card.Text>
+                            {comment.images && comment.images.length > 0 && (
+                              <div className="d-flex flex-wrap gap-2">
+                                {comment.images.map((image, index) => (
+                                  <Image key={index} src={image} thumbnail className="telegram-post-image" />
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Блок 3: Лайки и реакции */}
+                          <div className="d-flex align-items-center justify-content-between">
+                            <div>
+                              <div
+                                className="position-relative"
+                                onMouseEnter={() => setShowReactions(comment._id)}
+                                onMouseLeave={() => setShowReactions(null)}
                               >
-                                <HandThumbsUp className="me-1" /> {comment.likes?.length || 0}
-                              </Button>
-                              {showReactions === comment._id && (
-                                <div
-                                  className="reaction-menu position-absolute bg-light border rounded p-2"
-                                  style={{ zIndex: 1000 }}
+                                <Button
+                                  variant={comment.likes?.includes(user?.userId || '') ? 'primary' : 'outline-primary'}
+                                  onClick={() => handleCommentLike(comment._id)}
+                                  className="me-2"
+                                  size="sm"
                                 >
-                                  <ReactionPicker
-                                    onSelect={(emoji) => handleCommentReaction(comment._id, emoji)}
-                                  />
-                                </div>
+                                  <HandThumbsUp className="me-1" /> {comment.likes?.length || 0}
+                                </Button>
+                                {showReactions === comment._id && (
+                                  <div
+                                    className="reaction-menu position-absolute bg-light border rounded p-2"
+                                    style={{ zIndex: 1000 }}
+                                  >
+                                    <ReactionPicker
+                                      onSelect={(emoji) => handleCommentReaction(comment._id, emoji)}
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                              {comment.reactions && comment.reactions.length > 0 && (
+                                <ListGroup horizontal className="mt-1">
+                                  {comment.reactions.map((r) => (
+                                    <ListGroup.Item key={r.emoji} className="telegram-reaction-count">
+                                      {r.emoji} {r.users.length}
+                                    </ListGroup.Item>
+                                  ))}
+                                </ListGroup>
                               )}
                             </div>
-                            {comment.reactions && comment.reactions.length > 0 && (
-                              <ListGroup horizontal className="mt-1">
-                                {comment.reactions.map((r) => (
-                                  <ListGroup.Item key={r.emoji} className="telegram-reaction-count">
-                                    {r.emoji} {r.users.length}
-                                  </ListGroup.Item>
-                                ))}
-                              </ListGroup>
-                            )}
                             {user && user.userId === comment.userId._id && (
-                              <>
+                              <div>
                                 <Button
                                   variant="outline-secondary"
                                   size="sm"
@@ -568,7 +605,7 @@ export default function Post({
                                 >
                                   <Trash />
                                 </Button>
-                              </>
+                              </div>
                             )}
                           </div>
                         </>
