@@ -7,9 +7,36 @@ import { Paperclip } from 'react-bootstrap-icons';
 import EmojiPicker from '@/app/Components/EmojiPicker';
 import Post from '@/app/Components/Post';
 
+interface UserData {
+  _id: string;
+  username: string;
+  avatar?: string;
+}
+
+interface CommentData {
+  _id: string;
+  userId: UserData;
+  content: string;
+  createdAt: string;
+  images?: string[];
+  likes?: string[];
+  reactions?: { emoji: string; users: string[] }[];
+}
+
+interface PostData {
+  _id: string;
+  content: string;
+  userId: UserData;
+  createdAt: string;
+  likes: string[];
+  reactions: { emoji: string; users: string[] }[];
+  images: string[];
+  comments: CommentData[];
+}
+
 export default function Home() {
   const { user, isInitialized } = useAuth();
-  const [posts, setPosts] = useState<any[]>([]);
+  const [posts, setPosts] = useState<PostData[]>([]);
   const [postContent, setPostContent] = useState('');
   const [postImages, setPostImages] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -17,35 +44,47 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchPosts = async () => {
+    if (!user?.userId || !isInitialized) {
+      console.log('Home: Нет userId или инициализация не завершена, пропуск загрузки');
+      return;
+    }
     try {
+      console.log('Home: Загрузка постов для userId:', user.userId);
       const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch('/api/posts', {
         headers: {
-          'x-user-id': user?.userId || '',
+          'x-user-id': user.userId,
           'Authorization': `Bearer ${authToken}`,
         },
       });
-      if (!res.ok) throw new Error('Не удалось загрузить посты');
+      console.log('Home: Ответ от API, статус:', res.status);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
+        throw new Error(errorData.error || `Ошибка загрузки постов (статус: ${res.status})`);
+      }
       const data = await res.json();
+      console.log('Home: Получены данные постов:', data);
       setPosts(data);
     } catch (err: any) {
       console.error('Home: Ошибка загрузки постов:', err);
-      setError('Ошибка загрузки постов');
+      setError(err.message || 'Ошибка загрузки постов');
     }
   };
 
   useEffect(() => {
-    if (!isInitialized) return;
-    fetchPosts();
+    if (isInitialized && user) {
+      fetchPosts();
+    }
   }, [isInitialized, user]);
 
   const handlePostSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (submitting || !postContent.trim()) return;
+    if (submitting || !postContent.trim() || !user?.userId) return;
     setSubmitting(true);
     setError(null);
 
     try {
+      console.log('Home: Отправка поста для userId:', user.userId);
       const authToken = localStorage.getItem('authToken') || '';
       const formData = new FormData();
       formData.append('content', postContent);
@@ -54,18 +93,19 @@ export default function Home() {
       const res = await fetch('/api/posts', {
         method: 'POST',
         headers: {
-          'x-user-id': user?.userId || '',
+          'x-user-id': user.userId,
           'Authorization': `Bearer ${authToken}`,
         },
         body: formData,
       });
 
+      console.log('Home: Ответ от API при создании поста, статус:', res.status);
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Не удалось создать пост');
+        const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
+        throw new Error(errorData.error || `Не удалось создать пост (статус: ${res.status})`);
       }
 
-      await fetchPosts(); // Обновляем посты после создания
+      await fetchPosts();
       setPostContent('');
       setPostImages([]);
     } catch (err: any) {
@@ -152,18 +192,18 @@ export default function Home() {
         {posts.length > 0 ? (
           posts.map((post) => (
             <Post
-              key={post.postId} // Используем postId вместо _id
-              postId={post.postId}
-              username={post.username || 'Unknown User'}
-              userId={post.userId}
+              key={post._id}
+              postId={post._id}
+              username={post.userId.username}
+              userId={post.userId._id}
               content={post.content}
               createdAt={post.createdAt}
-              images={post.images || []}
-              likes={post.likes || []}
-              reactions={post.reactions || []}
+              images={post.images}
+              likes={post.likes}
+              reactions={post.reactions}
               fetchPosts={fetchPosts}
-              userAvatar={post.userAvatar || '/default-avatar.png'}
-              comments={post.comments || []} // Передаём комментарии из API
+              userAvatar={post.userId.avatar || '/default-avatar.png'}
+              comments={post.comments}
             />
           ))
         ) : (

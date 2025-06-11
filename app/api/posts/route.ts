@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
+import mongoose, { Schema, Types, Document } from 'mongoose';
 import dbConnect from '@/app/lib/mongoDB';
 import Post from '@/models/Post';
 import User from '@/models/User';
-import Comment from '@/models/Comment'; // Предполагаем, что модель Comment существует
 
-// Интерфейсы для типизации
+// Define interfaces for typing
 interface UserData {
   _id: string;
   username: string;
@@ -15,7 +15,7 @@ interface CommentData {
   _id: string;
   userId: UserData;
   content: string;
-  createdAt: Date;
+  createdAt: string;
   images?: string[];
   likes?: string[];
   reactions?: { emoji: string; users: string[] }[];
@@ -31,6 +31,29 @@ interface PostData {
   images: string[];
   comments: CommentData[];
 }
+
+// Define Comment model schema and register it
+interface IComment extends Document {
+  userId: Types.ObjectId;
+  postId: Types.ObjectId;
+  content: string;
+  createdAt: Date;
+  likes?: Types.ObjectId[];
+  reactions?: { emoji: string; users: Types.ObjectId[] }[];
+  images?: string[];
+}
+
+const CommentSchema = new Schema<IComment>({
+  userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  postId: { type: Schema.Types.ObjectId, ref: 'Post', required: true },
+  content: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now },
+  likes: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+  reactions: [{ emoji: String, users: [{ type: Schema.Types.ObjectId, ref: 'User' }] }],
+  images: [String],
+});
+
+const Comment = mongoose.models.Comment || mongoose.model<IComment>('Comment', CommentSchema);
 
 export async function GET(request: Request) {
   console.time('GET /api/posts: Total');
@@ -52,25 +75,30 @@ export async function GET(request: Request) {
 
     let postsQuery = Post.find().sort({ createdAt: -1 }).lean();
 
-    // Популяция данных пользователя
+    // Populate user data
     postsQuery = postsQuery.populate({
       path: 'userId',
       model: 'User',
       select: 'username userAvatar',
     });
 
-    // Популяция комментариев с вложенной популяцией пользователя
-    postsQuery = postsQuery.populate({
-      path: 'comments',
-      model: 'Comment',
-      populate: {
-        path: 'userId',
-        model: 'User',
-        select: 'username',
-      },
-    });
+    // Populate comments with user data, if model exists
+    if (mongoose.models.Comment) {
+      postsQuery = postsQuery.populate({
+        path: 'comments',
+        model: 'Comment',
+        populate: {
+          path: 'userId',
+          model: 'User',
+          select: 'username',
+        },
+      });
+      console.log('GET /api/posts: Популяция комментариев выполнена');
+    } else {
+      console.warn('GET /api/posts: Модель Comment не зарегистрирована, пропускаем populate');
+    }
 
-    // Фильтрация по communityId, если указано
+    // Filter by communityId if provided
     const url = new URL(request.url);
     const communityId = url.searchParams.get('communityId');
     if (communityId) {
