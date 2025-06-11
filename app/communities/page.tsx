@@ -1,30 +1,44 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Container, ListGroup, Button, Form } from 'react-bootstrap';
-import AppNavbar from '@/app/Components/Navbar';
+import { Container, Row, Col, FormControl, ListGroup, Alert, Button } from 'react-bootstrap';
 import { useAuth } from '@/app/lib/AuthContext';
 import Link from 'next/link';
+import { Pencil } from 'react-bootstrap-icons';
+import { useRouter } from 'next/navigation'; // Импортируем useRouter
 
 export default function Communities() {
-  const { userId } = useAuth();
+  const { userId, isInitialized } = useAuth();
   const [communities, setCommunities] = useState<{ _id: string; name: string; creator: { username: string } }[]>([]);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
+  const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isDesktop, setIsDesktop] = useState(true);
+  const router = useRouter(); // Инициализируем useRouter
 
   useEffect(() => {
-    if (!userId) {
-      console.log('Communities: Нет userId, ожидание перенаправления');
-      setLoading(false);
+    const checkDesktop = () => {
+      const desktop = window.innerWidth > 768;
+      setIsDesktop(desktop);
+      console.log('Communities: Проверка isDesktop:', desktop);
+    };
+    checkDesktop();
+    window.addEventListener('resize', checkDesktop);
+    return () => window.removeEventListener('resize', checkDesktop);
+  }, []);
+
+  useEffect(() => {
+    if (!isInitialized || !userId) {
+      console.log('Communities: Ожидание инициализации или userId:', { isInitialized, userId });
       return;
     }
     const fetchCommunities = async () => {
       try {
-        console.log('Communities: Загрузка сообществ');
+        console.log('Communities: Загрузка сообществ для userId:', userId);
+        setLoading(true);
         const res = await fetch('/api/communities', {
           headers: { 'x-user-id': userId },
+          cache: 'no-store',
         });
         if (!res.ok) {
           const errorData = await res.json();
@@ -40,85 +54,64 @@ export default function Communities() {
       }
     };
     fetchCommunities();
-  }, [userId]);
-
-  const handleCreateCommunity = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name || !userId) {
-      setError('Требуется название и аутентификация');
-      return;
-    }
-    try {
-      const res = await fetch('/api/communities', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': userId,
-        },
-        body: JSON.stringify({ name, description, userId }),
-      });
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Не удалось создать сообщество');
-      }
-      const newCommunity = await res.json();
-      setCommunities([...communities, newCommunity]);
-      setName('');
-      setDescription('');
-    } catch (err: any) {
-      console.error('Communities: Ошибка создания сообщества:', err);
-      setError(err.message);
-    }
-  };
+  }, [isInitialized, userId]);
 
   if (loading) return <div>Загрузка...</div>;
-  if (!userId) return null; // Ожидаем перенаправления
+  if (!isInitialized || !userId) return null;
   if (error) return <div>Ошибка: {error}</div>;
 
+  const handleCreateClick = () => {
+    router.push('/communities/create'); // Программная навигация
+  };
+
   return (
-    <>
-      <AppNavbar />
-      <Container className="my-4">
-        <h2>Сообщества</h2>
-        <Form onSubmit={handleCreateCommunity} className="mb-4">
-          <Form.Group className="mb-3">
-            <Form.Label>Название сообщества</Form.Label>
-            <Form.Control
+    <Container fluid className="mt-3">
+      {error && <Alert variant="danger">{error}</Alert>}
+      <Row>
+        <Col md={4} className="border-end" style={{ backgroundColor: '#f8f9fa', height: 'calc(100vh - 56px)' }}>
+          <div className="p-3">
+            <div className="d-flex justify-content-between align-items-center mb-3">
+              <h4>Сообщества</h4>
+              <Button
+                variant="outline-secondary"
+                size="sm"
+                className="p-1"
+                onClick={handleCreateClick} // Используем onClick вместо as={Link}
+              >
+                <Pencil />
+              </Button>
+            </div>
+            <FormControl
               type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Введите название..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Поиск сообщества..."
+              className="mb-3"
             />
-          </Form.Group>
-          <Form.Group className="mb-3">
-            <Form.Label>Описание</Form.Label>
-            <Form.Control
-              as="textarea"
-              rows={3}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Введите описание..."
-            />
-          </Form.Group>
-          <Button variant="primary" type="submit">
-            Создать сообщество
-          </Button>
-        </Form>
-        <h3>Список сообществ</h3>
-        <ListGroup>
-          {communities.length === 0 ? (
-            <p>Пока нет сообществ</p>
-          ) : (
-            communities.map((community) => (
-              <ListGroup.Item key={community._id}>
-                <Link href={`/communities/${community._id}`}>
-                  {community.name} (Создатель: {community.creator?.username || 'Неизвестный'})
-                </Link>
-              </ListGroup.Item>
-            ))
-          )}
-        </ListGroup>
-      </Container>
-    </>
+            <ListGroup>
+              {communities.length === 0 ? (
+                <ListGroup.Item>Пока нет сообществ</ListGroup.Item>
+              ) : (
+                communities.map((community) => (
+                  <ListGroup.Item key={community._id} action>
+                    <Link href={`/communities/${community._id}`} passHref>
+                      {community.name} (Создатель: {community.creator?.username || 'Неизвестный'})
+                    </Link>
+                  </ListGroup.Item>
+                ))
+              )}
+            </ListGroup>
+          </div>
+        </Col>
+        {isDesktop && (
+          <Col md={8}>
+            <div className="p-3" style={{ height: 'calc(100vh - 56px)', display: 'flex', flexDirection: 'column' }}>
+              <h2>Выбранное сообщество</h2>
+              <p>Выберите сообщество для просмотра деталей.</p>
+            </div>
+          </Col>
+        )}
+      </Row>
+    </Container>
   );
 }
