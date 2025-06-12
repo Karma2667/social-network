@@ -1,227 +1,508 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Container, Row, Col, Form, Button } from 'react-bootstrap';
-import Post from '@/app/Components/Post';
-import AppNavbar from '@/app/Components/Navbar';
+import { useState, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/app/lib/AuthContext';
-import { use } from 'react';
-
-interface PostData {
-  _id: string;
-  content: string;
-  user: { _id: string; username: string; avatar?: string } | null;
-  community?: { _id: string; name: string };
-  createdAt: string;
-  likes: string[];
-  reactions: { emoji: string; users: string[] }[];
-  images: string[];
-  comments: any[];
-}
+import { Container, Row, Col, Form, Button, Alert, Modal, Image, OverlayTrigger, Tooltip } from 'react-bootstrap';
+import { Pencil, Trash, Plus } from 'react-bootstrap-icons';
+import Post from '@/app/Components/Post';
 
 interface CommunityData {
   _id: string;
   name: string;
   description: string;
-  creator: { username: string };
-  members: { username: string }[];
+  interests: string[];
+  avatar: string;
+  creator: { _id: string; username: string } | null;
+  members: { _id: string; username: string }[];
+  admins: ({ _id: string; username: string } | string)[];
 }
 
-export default function CommunityPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
-  const { userId } = useAuth();
+interface Friend {
+  _id: string;
+  username: string;
+}
+
+interface PostData {
+  username: string;
+  content: string;
+  createdAt: string | number;
+  userId: string;
+  likes: string[];
+  reactions: { emoji: string; users: string[] }[];
+  images: string[];
+  postId: string;
+  fetchPosts: () => Promise<void>;
+  userAvatar?: string;
+  comments?: CommentProps[];
+}
+
+interface CommentProps {
+  _id: string;
+  userId: { _id: string; username: string };
+  content: string;
+  createdAt: string;
+}
+
+export default function CommunityPage() {
+  const params = useParams();
+  const paramId = params?.id;
+  const { userId, isInitialized } = useAuth();
+  const router = useRouter();
+
+  const id = typeof paramId === 'string' ? paramId : null;
+  if (!id) {
+    return <div>Неверный ID сообщества</div>;
+  }
+
   const [community, setCommunity] = useState<CommunityData | null>(null);
   const [posts, setPosts] = useState<PostData[]>([]);
-  const [content, setContent] = useState('');
-  const [images, setImages] = useState<File[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newDescription, setNewDescription] = useState('');
+  const [newInterests, setNewInterests] = useState('');
+  const [newAvatar, setNewAvatar] = useState('');
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [showMembersModal, setShowMembersModal] = useState(false);
+  const [showAddFriendModal, setShowAddFriendModal] = useState(false);
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
+  const maxRetries = 3;
 
-  const fetchCommunity = useCallback(async () => {
-    if (!id || !userId) {
-      console.log('CommunityPage: Пропуск загрузки сообщества, id или userId отсутствуют:', { id, userId });
+  const fetchCommunity = async (retry = false) => {
+    if (!isInitialized || !userId) {
+      setError('Пользователь не инициализирован');
       return;
     }
     try {
-      console.log('CommunityPage: Загрузка сообщества с ID:', id);
       const res = await fetch(`/api/communities/${id}`, {
-        headers: { 'x-user-id': userId },
+        headers: { 'x-user-id': userId! },
       });
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Не удалось загрузить сообщество');
-      }
+      if (!res.ok) throw new Error('Не удалось загрузить сообщество');
       const data = await res.json();
-      setCommunity(data || null);
+      setCommunity(data);
+      setNewName(data.name);
+      setNewDescription(data.description || '');
+      setNewInterests(data.interests.join(', '));
+      setNewAvatar(data.avatar || '');
     } catch (err: any) {
-      console.error('CommunityPage: Ошибка загрузки сообщества:', err);
-      setError(err.message);
+      console.error('Ошибка загрузки сообщества:', err);
+      if (retry && retryCount < maxRetries) {
+        setTimeout(() => fetchCommunity(true), 1000 * (retryCount + 1));
+        setRetryCount(retryCount + 1);
+      } else {
+        setError(err.message);
+      }
     }
-  }, [id, userId]);
+  };
 
-  const fetchPosts = useCallback(async () => {
-    if (!id || !userId) {
-      console.log('CommunityPage: Пропуск загрузки постов, id или userId отсутствуют:', { id, userId });
+  const fetchPosts = async (retry = false) => {
+    if (!isInitialized || !userId) {
+      setError('Пользователь не инициализирован');
       return;
     }
     try {
-      console.log('CommunityPage: Загрузка постов для сообщества:', id);
       const res = await fetch(`/api/posts?communityId=${id}`, {
-        headers: { 'x-user-id': userId },
-        cache: 'no-store',
+        headers: { 'x-user-id': userId! },
       });
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Не удалось загрузить посты');
-      }
+      if (!res.ok) throw new Error('Не удалось загрузить посты');
       const data = await res.json();
-      // Проверка и приведение данных к нужному формату
-      const formattedPosts = data.map((post: any) => ({
-        ...post,
-        user: post.user || { _id: '', username: 'Unknown User', avatar: '/default-avatar.png' },
-      }));
-      setPosts(formattedPosts);
+      if (Array.isArray(data)) {
+        setPosts(data.map((post: any) => ({ ...post, fetchPosts })));
+      } else {
+        console.error('Неверный формат данных постов:', data);
+        setPosts([]);
+      }
     } catch (err: any) {
-      console.error('CommunityPage: Ошибка загрузки постов:', err);
-      setError(err.message);
+      console.error('Ошибка загрузки постов:', err);
+      if (retry && retryCount < maxRetries) {
+        setTimeout(() => fetchPosts(true), 1000 * (retryCount + 1));
+        setRetryCount(retryCount + 1);
+      } else {
+        setError(err.message);
+      }
     }
-  }, [id, userId]);
+  };
 
-  useEffect(() => {
-    if (!userId || !id) {
-      console.log('CommunityPage: Ожидание userId или id, текущие значения:', { userId, id });
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    Promise.all([fetchCommunity(), fetchPosts()]).finally(() => setLoading(false));
-  }, [userId, id, fetchCommunity, fetchPosts]);
-
-  const handlePostSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!content) {
-      setError('Требуется текст поста');
-      return;
-    }
-    if (!userId || !id) {
-      setError('Пользователь не аутентифицирован или сообщество не выбрано');
+  const fetchFriends = async (retry = false) => {
+    if (!isInitialized || !userId) {
+      setError('Пользователь не инициализирован');
       return;
     }
     try {
-      let imagePaths: string[] = [];
-      if (images.length > 0) {
-        const formData = new FormData();
-        images.forEach((file) => formData.append('files', file));
-        const uploadRes = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-        });
-        if (!uploadRes.ok) {
-          const errorData = await uploadRes.json();
-          throw new Error(errorData.error || 'Не удалось загрузить изображения');
-        }
-        const { files } = await uploadRes.json();
-        imagePaths = files;
-      }
-
-      const postData = {
-        userId,
-        content,
-        images: imagePaths,
-        community: id,
-      };
-
-      const res = await fetch('/api/posts', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': userId,
-        },
-        body: JSON.stringify(postData),
+      const res = await fetch('/api/friends', {
+        headers: { 'x-user-id': userId! },
       });
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Не удалось создать пост');
+      if (!res.ok) throw new Error('Не удалось загрузить список друзей');
+      const data = await res.json();
+      console.log('API friends response:', data);
+      if (data && Array.isArray(data.friends)) {
+        setFriends(data.friends.map((friend: any) => ({
+          _id: friend._id.toString(),
+          username: friend.username || 'Unknown',
+        })));
+      } else {
+        console.error('Неверный формат данных друзей:', data);
+        setFriends([]);
       }
-      setContent('');
-      setImages([]);
-      await fetchPosts();
     } catch (err: any) {
-      console.error('CommunityPage: Ошибка создания поста:', err);
+      console.error('Ошибка загрузки друзей:', err);
+      if (retry && retryCount < maxRetries) {
+        setTimeout(() => fetchFriends(true), 1000 * (retryCount + 1));
+        setRetryCount(retryCount + 1);
+      } else {
+        setError(err.message);
+      }
+    }
+  };
+
+  const handleEdit = async () => {
+    if (!community || !userId || !isAdmin || loading) {
+      setError('Сообщество или пользователь не инициализированы, или данные загружаются');
+      return;
+    }
+    try {
+      const formData = new FormData();
+      formData.append('name', newName || '');
+      formData.append('description', newDescription || '');
+      formData.append('interests', newInterests.split(',').map((interest) => interest.trim()).join(',') || '');
+      if (avatarFile) {
+        formData.append('avatar', avatarFile);
+      } else if (newAvatar) {
+        formData.append('avatar', newAvatar);
+      }
+
+      const res = await fetch(`/api/communities/${id}`, {
+        method: 'PUT',
+        headers: {
+          'x-user-id': userId!,
+        },
+        body: formData,
+      });
+      if (!res.ok) throw new Error(await res.text() || 'Не удалось обновить сообщество');
+      const updatedCommunity = await res.json();
+      console.log('Обновленные данные сообщества:', updatedCommunity);
+      setCommunity(updatedCommunity);
+      setIsEditing(false);
+      setShowModal(false);
+    } catch (err: any) {
+      console.error('Ошибка обновления сообщества:', err);
       setError(err.message);
     }
   };
 
+  const handleDelete = async () => {
+    if (!community || !userId || !isAdmin) return;
+    if (!window.confirm('Вы уверены, что хотите удалить это сообщество?')) return;
+    try {
+      const res = await fetch(`/api/communities/${id}`, {
+        method: 'DELETE',
+        headers: { 'x-user-id': userId! },
+      });
+      if (!res.ok) throw new Error('Не удалось удалить сообщество');
+      router.push('/communities');
+    } catch (err: any) {
+      console.error('Ошибка удаления сообщества:', err);
+      setError(err.message);
+    }
+  };
+
+  const handleRemoveMember = async (memberId: string) => {
+    if (!community || !userId || !isAdmin || loading) {
+      setError('Сообщество или пользователь не инициализированы, или данные загружаются');
+      return;
+    }
+    if (memberId === userId) {
+      setError('Нельзя удалить себя из сообщества');
+      return;
+    }
+    console.log('Removing member with ID:', memberId);
+    try {
+      const res = await fetch(`/api/communities/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userId!,
+        },
+        body: JSON.stringify({ action: 'removeMember', memberId }),
+      });
+      if (!res.ok) throw new Error(await res.text() || 'Не удалось удалить пользователя');
+      const updatedCommunity = await res.json();
+      setCommunity(updatedCommunity);
+    } catch (err: any) {
+      console.error('Ошибка удаления пользователя:', err);
+      setError(err.message);
+    }
+  };
+
+  const handleAddMember = async (friendId: string) => {
+    if (!community || !userId || !isAdmin || loading) {
+      setError('Сообщество или пользователь не инициализированы, или данные загружаются');
+      return;
+    }
+    console.log('Adding member with ID:', friendId);
+    try {
+      const res = await fetch(`/api/communities/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userId!,
+        },
+        body: JSON.stringify({ action: 'addMember', memberId: friendId }),
+      });
+      if (!res.ok) throw new Error(await res.text() || 'Не удалось добавить пользователя');
+      const updatedCommunity = await res.json();
+      setCommunity(updatedCommunity);
+      setShowAddFriendModal(false);
+    } catch (err: any) {
+      console.error('Ошибка добавления пользователя:', err);
+      setError(err.message);
+    }
+  };
+
+  useEffect(() => {
+    if (!isInitialized || !userId) {
+      setError('Ошибка инициализации');
+      return;
+    }
+    setLoading(true);
+    Promise.all([fetchCommunity(), fetchPosts(), fetchFriends()])
+      .then(() => {
+        setLoading(false);
+        setRetryCount(0); // Сбросить счётчик повторов при успехе
+      })
+      .catch((err) => {
+        console.error('Ошибка при загрузке данных:', err);
+        setError('Ошибка загрузки данных');
+        setLoading(false);
+      });
+  }, [id, isInitialized, userId]);
+
+  const isAdmin = community && userId
+    ? community.admins.some((admin) => 
+        (typeof admin === 'string' ? admin : admin._id) === userId
+      )
+    : false;
+
   if (loading) return <div>Загрузка...</div>;
-  if (!userId || !id) return <div>Пожалуйста, войдите и выберите сообщество (id: {id})</div>;
-  if (error) return <div>Ошибка: {error}</div>;
+  if (!community) return <div>Сообщество не найдено</div>;
 
   return (
-    <>
-      <AppNavbar />
-      <Container className="my-4">
-        <Row>
-          <Col md={{ span: 8, offset: 2 }}>
-            {community ? (
-              <>
-                <h2>{community.name}</h2>
-                <p>{community.description || 'Описание отсутствует'}</p>
-                <p>Создатель: {community.creator?.username || 'Неизвестный'}</p>
-                <p>Участники: {(community.members || []).map((m) => m.username).join(', ') || 'Нет участников'}</p>
-              </>
-            ) : (
-              <p>Сообщество не найдено</p>
+    <Container fluid>
+      <Row>
+        <Col md={3} className="border-end p-3">
+          <h5>Сообщества</h5>
+          <p>Плейсхолдер списка сообществ</p>
+        </Col>
+        <Col md={6} className="p-3">
+          <h3>{community.name}</h3>
+          {error && <Alert variant="danger">{error}</Alert>}
+          {posts.length > 0 ? (
+            posts.map((post) => (
+              <Post
+                key={post.postId}
+                username={post.username}
+                content={post.content}
+                createdAt={post.createdAt}
+                userId={post.userId}
+                likes={post.likes || []}
+                reactions={post.reactions || []}
+                images={post.images || []}
+                postId={post.postId}
+                fetchPosts={fetchPosts}
+                userAvatar={post.userAvatar || '/default-avatar.png'}
+                comments={post.comments || []}
+              />
+            ))
+          ) : (
+            <p>Пока нет постов.</p>
+          )}
+        </Col>
+        <Col md={3} className="p-3">
+          <div
+            style={{
+              position: 'sticky',
+              top: '20px',
+              background: '#fff',
+              padding: '10px',
+              borderRadius: '5px',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            }}
+          >
+            <div className="mb-3">
+              <h5>{community.name}</h5>
+            </div>
+            {community.avatar && (
+              <Image src={community.avatar} roundedCircle className="mb-2" style={{ width: '100px', height: '100px' }} />
             )}
-            <Form onSubmit={handlePostSubmit} className="mb-4">
-              <Form.Group className="mb-3">
-                <Form.Control
-                  as="textarea"
-                  rows={3}
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="Напишите пост..."
-                />
-              </Form.Group>
-              <Form.Group className="mb-3">
-                <Form.Label>Загрузить изображения</Form.Label>
-                <Form.Control
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={(e) => {
-                    const files = (e.target as HTMLInputElement).files;
-                    if (files) setImages(Array.from(files));
-                  }}
-                />
-              </Form.Group>
-              <Button variant="primary" type="submit">
-                Опубликовать
-              </Button>
-            </Form>
-            <h3>Посты</h3>
-            {posts.length === 0 ? (
-              <p>Пока нет постов</p>
-            ) : (
-              posts.map((post) => (
-                <Post
-                  key={post._id}
-                  username={post.user?.username || 'Неизвестный'}
-                  content={post.content || 'Нет содержимого'}
-                  createdAt={post.createdAt || Date.now()}
-                  userId={post.user?._id?.toString() || ''}
-                  likes={post.likes || []}
-                  reactions={post.reactions || []}
-                  images={post.images || []}
-                  postId={post._id.toString()}
-                  fetchPosts={fetchPosts}
-                  userAvatar={post.user?.avatar || '/default-avatar.png'}
-                  comments={post.comments || []}
-                />
-              ))
+            <p><strong>Описание:</strong> {community.description || 'Нет описания'}</p>
+            <p><strong>Интересы:</strong> {community.interests.length > 0 ? community.interests.join(', ') : 'Нет интересов'}</p>
+            <p><strong>Создатель:</strong> {community.creator ? community.creator.username : 'Неизвестно'}</p>
+            <p>
+              <strong>Подписчики:</strong>{' '}
+              <a href="#" onClick={(e) => { e.preventDefault(); setShowMembersModal(true); }}>
+                {community.members.length}
+              </a>
+            </p>
+            {isAdmin && (
+              <div className="mt-3">
+                <OverlayTrigger
+                  placement="top"
+                  overlay={<Tooltip id="edit-tooltip">Редактировать сообщество</Tooltip>}
+                >
+                  <Button variant="link" onClick={() => setShowModal(true)}>
+                    <Pencil size={18} />
+                  </Button>
+                </OverlayTrigger>
+                <OverlayTrigger
+                  placement="top"
+                  overlay={<Tooltip id="delete-tooltip">Удалить сообщество</Tooltip>}
+                >
+                  <Button variant="link" onClick={handleDelete} className="ms-2">
+                    <Trash size={18} color="red" />
+                  </Button>
+                </OverlayTrigger>
+                <Button variant="primary" onClick={() => setShowAddFriendModal(true)} className="ms-2">
+                  <Plus size={18} /> Добавить друга
+                </Button>
+              </div>
             )}
-          </Col>
-        </Row>
-      </Container>
-    </>
+          </div>
+        </Col>
+      </Row>
+
+      <Modal show={showModal} onHide={() => setShowModal(false)}>
+        <Modal.Header closeButton>
+          <Modal.Title>Редактировать сообщество</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Form>
+            <Form.Group className="mb-3">
+              <Form.Label>Новое название</Form.Label>
+              <Form.Control
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="Введите новое название"
+              />
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Описание</Form.Label>
+              <Form.Control
+                as="textarea"
+                rows={3}
+                value={newDescription}
+                onChange={(e) => setNewDescription(e.target.value)}
+                placeholder="Введите новое описание"
+              />
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Интересы (через запятую)</Form.Label>
+              <Form.Control
+                type="text"
+                value={newInterests}
+                onChange={(e) => setNewInterests(e.target.value)}
+                placeholder="Введите интересы (например, Кулинария, Гейминг)"
+              />
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Аватар</Form.Label>
+              <Form.Control
+                type="text"
+                value={newAvatar}
+                onChange={(e) => setNewAvatar(e.target.value)}
+                placeholder="Введите URL или путь к аватару"
+              />
+              <Form.Control
+                type="file"
+                className="mt-2"
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  const file = e.target.files?.[0];
+                  if (file) setAvatarFile(file);
+                }}
+                accept="image/*"
+              />
+            </Form.Group>
+          </Form>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowModal(false)}>
+            Отмена
+          </Button>
+          <Button variant="primary" onClick={handleEdit}>
+            Сохранить
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal show={showMembersModal} onHide={() => setShowMembersModal(false)}>
+        <Modal.Header closeButton>
+          <Modal.Title>Подписчики</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {community.members.length > 0 ? (
+            <ul>
+              {community.members.map((member) => (
+                <li key={member._id} className="d-flex justify-content-between align-items-center">
+                  {member.username}
+                  {isAdmin && member._id !== userId && (
+                    <Button
+                      variant="link"
+                      className="text-danger p-0 ms-2"
+                      onClick={() => handleRemoveMember(member._id)}
+                    >
+                      <Trash size={16} />
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>Нет подписчиков.</p>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowMembersModal(false)}>
+            Закрыть
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal show={showAddFriendModal} onHide={() => setShowAddFriendModal(false)}>
+        <Modal.Header closeButton>
+          <Modal.Title>Добавить друга</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {friends.length > 0 ? (
+            <ul>
+              {friends.map((friend) => (
+                <li key={friend._id} className="d-flex justify-content-between align-items-center">
+                  {friend.username}
+                  {!community.members.some((m) => m._id === friend._id) && (
+                    <Button
+                      variant="primary"
+                      className="ms-2"
+                      onClick={() => handleAddMember(friend._id)}
+                    >
+                      Добавить
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>У вас нет друзей или список не загружен.</p>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowAddFriendModal(false)}>
+            Закрыть
+          </Button>
+        </Modal.Footer>
+      </Modal>
+    </Container>
   );
 }
