@@ -3,7 +3,22 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/app/lib/AuthContext';
-import { Container, Row, Col, Form, Button, Alert, Modal, Image, OverlayTrigger, Tooltip } from 'react-bootstrap';
+import { 
+  Container, 
+  Row, 
+  Col, 
+  FormControl, 
+  ListGroup, 
+  Alert, 
+  Modal, 
+  Image, 
+  OverlayTrigger, 
+  Tooltip, 
+  Button, 
+  Form, 
+  FormGroup, 
+  FormLabel 
+} from 'react-bootstrap';
 import { Pencil, Trash, Plus } from 'react-bootstrap-icons';
 import Post from '@/app/Components/Post';
 
@@ -16,6 +31,13 @@ interface CommunityData {
   creator: { _id: string; username: string } | null;
   members: { _id: string; username: string }[];
   admins: ({ _id: string; username: string } | string)[];
+}
+
+interface CommunityListItem {
+  _id: string;
+  name: string;
+  avatar: string;
+  creator: { username: string } | null;
 }
 
 interface Friend {
@@ -68,6 +90,8 @@ export default function CommunityPage() {
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [showAddFriendModal, setShowAddFriendModal] = useState(false);
   const [friends, setFriends] = useState<Friend[]>([]);
+  const [communities, setCommunities] = useState<CommunityListItem[]>([]);
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [retryCount, setRetryCount] = useState(0);
   const maxRetries = 3;
@@ -152,6 +176,40 @@ export default function CommunityPage() {
       console.error('Ошибка загрузки друзей:', err);
       if (retry && retryCount < maxRetries) {
         setTimeout(() => fetchFriends(true), 1000 * (retryCount + 1));
+        setRetryCount(retryCount + 1);
+      } else {
+        setError(err.message);
+      }
+    }
+  };
+
+  const fetchCommunities = async (retry = false) => {
+    if (!isInitialized || !userId) {
+      setError('Пользователь не инициализирован');
+      return;
+    }
+    try {
+      const res = await fetch('/api/communities', {
+        headers: { 'x-user-id': userId! },
+        cache: 'no-store',
+      });
+      if (!res.ok) throw new Error('Не удалось загрузить список сообществ');
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setCommunities(data.map((item: any) => ({
+          _id: item._id,
+          name: item.name,
+          avatar: item.avatar || '/default-community-avatar.png',
+          creator: item.creator || null,
+        })));
+      } else {
+        console.error('Неверный формат данных сообществ:', data);
+        setCommunities([]);
+      }
+    } catch (err: any) {
+      console.error('Ошибка загрузки сообществ:', err);
+      if (retry && retryCount < maxRetries) {
+        setTimeout(() => fetchCommunities(true), 1000 * (retryCount + 1));
         setRetryCount(retryCount + 1);
       } else {
         setError(err.message);
@@ -263,13 +321,17 @@ export default function CommunityPage() {
     }
   };
 
+  const handleCreateClick = () => {
+    router.push('/communities/create');
+  };
+
   useEffect(() => {
     if (!isInitialized || !userId) {
       setError('Ошибка инициализации');
       return;
     }
     setLoading(true);
-    Promise.all([fetchCommunity(), fetchPosts(), fetchFriends()])
+    Promise.all([fetchCommunity(), fetchPosts(), fetchFriends(), fetchCommunities()])
       .then(() => {
         setLoading(false);
         setRetryCount(0); // Сбросить счётчик повторов при успехе
@@ -287,15 +349,58 @@ export default function CommunityPage() {
       )
     : false;
 
+  const filteredCommunities = communities.filter((comm) =>
+    comm.name.toLowerCase().includes(search.toLowerCase())
+  );
+
   if (loading) return <div>Загрузка...</div>;
   if (!community) return <div>Сообщество не найдено</div>;
 
   return (
     <Container fluid>
       <Row>
-        <Col md={3} className="border-end p-3">
-          <h5>Сообщества</h5>
-          <p>Плейсхолдер списка сообществ</p>
+        <Col md={3} className="border-end" style={{ backgroundColor: '#f8f9fa', height: 'calc(100vh - 56px)' }}>
+          <div className="p-3">
+            <div className="d-flex justify-content-between align-items-center mb-3">
+              <h4>Сообщества</h4>
+              <Button
+                variant="outline-secondary"
+                size="sm"
+                className="p-1"
+                onClick={handleCreateClick}
+              >
+                <Pencil />
+              </Button>
+            </div>
+            <FormControl
+              type="text"
+              value={search}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
+              placeholder="Поиск сообщества..."
+              className="mb-3"
+            />
+            <ListGroup>
+              {filteredCommunities.length === 0 ? (
+                <ListGroup.Item>Пока нет сообществ</ListGroup.Item>
+              ) : (
+                filteredCommunities.map((comm) => (
+                  <ListGroup.Item
+                    key={comm._id}
+                    action
+                    active={comm._id === id}
+                    onClick={() => router.push(`/communities/${comm._id}`)}
+                  >
+                    <Image
+                      src={comm.avatar}
+                      roundedCircle
+                      style={{ width: '30px', height: '30px', marginRight: '10px' }}
+                    />
+                    {comm.name} (Создатель: {comm.creator?.username || 'Неизвестный'})
+                  </ListGroup.Item>
+                ))
+              )}
+            </ListGroup>
+          </div>
         </Col>
         <Col md={6} className="p-3">
           <h3>{community.name}</h3>
@@ -380,43 +485,43 @@ export default function CommunityPage() {
         </Modal.Header>
         <Modal.Body>
           <Form>
-            <Form.Group className="mb-3">
-              <Form.Label>Новое название</Form.Label>
-              <Form.Control
+            <FormGroup className="mb-3">
+              <FormLabel>Новое название</FormLabel>
+              <FormControl
                 type="text"
                 value={newName}
-                onChange={(e) => setNewName(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewName(e.target.value)}
                 placeholder="Введите новое название"
               />
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>Описание</Form.Label>
-              <Form.Control
+            </FormGroup>
+            <FormGroup className="mb-3">
+              <FormLabel>Описание</FormLabel>
+              <FormControl
                 as="textarea"
                 rows={3}
                 value={newDescription}
-                onChange={(e) => setNewDescription(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewDescription(e.target.value)}
                 placeholder="Введите новое описание"
               />
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>Интересы (через запятую)</Form.Label>
-              <Form.Control
+            </FormGroup>
+            <FormGroup className="mb-3">
+              <FormLabel>Интересы (через запятую)</FormLabel>
+              <FormControl
                 type="text"
                 value={newInterests}
-                onChange={(e) => setNewInterests(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewInterests(e.target.value)}
                 placeholder="Введите интересы (например, Кулинария, Гейминг)"
               />
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>Аватар</Form.Label>
-              <Form.Control
+            </FormGroup>
+            <FormGroup className="mb-3">
+              <FormLabel>Аватар</FormLabel>
+              <FormControl
                 type="text"
                 value={newAvatar}
-                onChange={(e) => setNewAvatar(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewAvatar(e.target.value)}
                 placeholder="Введите URL или путь к аватару"
               />
-              <Form.Control
+              <FormControl
                 type="file"
                 className="mt-2"
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -425,7 +530,7 @@ export default function CommunityPage() {
                 }}
                 accept="image/*"
               />
-            </Form.Group>
+            </FormGroup>
           </Form>
         </Modal.Body>
         <Modal.Footer>

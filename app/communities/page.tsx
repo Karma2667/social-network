@@ -5,16 +5,17 @@ import { Container, Row, Col, FormControl, ListGroup, Alert, Button } from 'reac
 import { useAuth } from '@/app/lib/AuthContext';
 import Link from 'next/link';
 import { Pencil } from 'react-bootstrap-icons';
-import { useRouter } from 'next/navigation'; // Импортируем useRouter
+import { useRouter } from 'next/navigation';
+import Image from 'next/image'; // Используем Image для оптимизации изображений
 
 export default function Communities() {
   const { userId, isInitialized } = useAuth();
-  const [communities, setCommunities] = useState<{ _id: string; name: string; creator: { username: string } }[]>([]);
+  const [communities, setCommunities] = useState<{ _id: string; name: string; creator: { username: string } | null; avatar?: string }[]>([]);
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isDesktop, setIsDesktop] = useState(true);
-  const router = useRouter(); // Инициализируем useRouter
+  const router = useRouter();
 
   useEffect(() => {
     const checkDesktop = () => {
@@ -61,8 +62,12 @@ export default function Communities() {
   if (error) return <div>Ошибка: {error}</div>;
 
   const handleCreateClick = () => {
-    router.push('/communities/create'); // Программная навигация
+    router.push('/communities/create');
   };
+
+  const filteredCommunities = communities.filter((community) =>
+    community.name.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <Container fluid className="mt-3">
@@ -76,7 +81,7 @@ export default function Communities() {
                 variant="outline-secondary"
                 size="sm"
                 className="p-1"
-                onClick={handleCreateClick} // Используем onClick вместо as={Link}
+                onClick={handleCreateClick}
               >
                 <Pencil />
               </Button>
@@ -84,19 +89,29 @@ export default function Communities() {
             <FormControl
               type="text"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
               placeholder="Поиск сообщества..."
               className="mb-3"
             />
             <ListGroup>
-              {communities.length === 0 ? (
+              {filteredCommunities.length === 0 ? (
                 <ListGroup.Item>Пока нет сообществ</ListGroup.Item>
               ) : (
-                communities.map((community) => (
-                  <ListGroup.Item key={community._id} action>
-                    <Link href={`/communities/${community._id}`} passHref>
-                      {community.name} (Создатель: {community.creator?.username || 'Неизвестный'})
-                    </Link>
+                filteredCommunities.map((community) => (
+                  <ListGroup.Item
+                    key={community._id}
+                    action
+                    active={false} // Активное состояние не используется здесь
+                    onClick={() => router.push(`/communities/${community._id}`)}
+                  >
+                    <Image
+                      src={community.avatar || '/default-community-avatar.png'} // Используем avatar с fallback
+                      alt={community.name}
+                      width={30}
+                      height={30}
+                      className="rounded-circle me-2"
+                    />
+                    {community.name} (Создатель: {community.creator?.username || 'Неизвестный'})
                   </ListGroup.Item>
                 ))
               )}
