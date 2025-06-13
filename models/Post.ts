@@ -2,6 +2,7 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface PostDocument extends Document {
   userId: Types.ObjectId;
+  community: Types.ObjectId | null; // Добавлено поле для сообщества
   content: string;
   createdAt: Date;
   updatedAt?: Date;
@@ -16,6 +17,7 @@ export interface PostDocument extends Document {
 const PostSchema = new mongoose.Schema<PostDocument>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    community: { type: Schema.Types.ObjectId, ref: 'Community', default: null }, // Добавлено поле для сообщества
     content: { type: String, required: true },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date },
