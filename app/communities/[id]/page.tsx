@@ -67,6 +67,7 @@ interface PostData {
   content: string;
   communityId?: string;
   userId: UserData;
+  isCommunityPost?: boolean;
   createdAt: string;
   likes: string[];
   reactions: { emoji: string; users: string[] }[];
@@ -111,7 +112,8 @@ export default function CommunityPage() {
       });
       if (!res.ok) throw new Error('Не удалось загрузить сообщество');
       const data = await res.json();
-      setCommunity(data);
+      console.log('CommunityPage: Полученные данные сообщества:', data);
+      setCommunity(data); // Обновляем состояние напрямую
       setNewName(data.name);
       setNewDescription(data.description || '');
       setNewInterests(data.interests.join(', '));
@@ -142,9 +144,9 @@ export default function CommunityPage() {
         throw new Error(errorData.error || `Ошибка загрузки постов (статус: ${res.status})`);
       }
       const data = await res.json();
-      console.log('CommunityPage: Получены данные постов:', data);
+      console.log('CommunityPage: Полученные посты:', data);
       if (Array.isArray(data)) {
-        setPosts(data);
+        setPosts(data); // Обновляем состояние напрямую
       } else if (data.message === 'Посты не найдены') {
         setPosts([]);
       } else {
@@ -348,6 +350,7 @@ export default function CommunityPage() {
       const formData = new FormData();
       formData.append('content', postContent);
       formData.append('communityId', id);
+      formData.append('isCommunityPost', 'true');
       postImages.forEach((file) => formData.append('images', file));
 
       const res = await fetch('/api/posts', {
@@ -373,6 +376,34 @@ export default function CommunityPage() {
       setError(err.message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    if (!user?.userId || !id) return;
+    if (!window.confirm('Вы уверены, что хотите удалить этот пост?')) return;
+
+    try {
+      console.log('CommunityPage: Удаление поста с ID:', postId);
+      const authToken = localStorage.getItem('authToken') || '';
+      const res = await fetch(`/api/posts/${postId}`, {
+        method: 'DELETE',
+        headers: {
+          'x-user-id': user.userId,
+          'Authorization': `Bearer ${authToken}`,
+        },
+      });
+
+      console.log('CommunityPage: Ответ от API при удалении поста, статус:', res.status);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
+        throw new Error(errorData.error || `Ошибка удаления поста (статус: ${res.status})`);
+      }
+
+      await fetchPosts();
+    } catch (err: any) {
+      console.error('CommunityPage: Ошибка удаления поста:', err);
+      setError(err.message);
     }
   };
 
@@ -520,6 +551,11 @@ export default function CommunityPage() {
                 fetchPosts={fetchPosts}
                 userAvatar={post.userId.avatar || '/default-avatar.png'}
                 comments={post.comments || []}
+                onDelete={handleDeletePost}
+                isCommunityPost={post.isCommunityPost || false}
+                communityId={id}
+                currentUserId={user?.userId || ''}
+                isAdmin={isAdmin}
               />
             ))
           ) : (

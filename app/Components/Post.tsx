@@ -21,6 +21,11 @@ interface PostProps {
   fetchPosts: () => Promise<void>;
   userAvatar?: string;
   comments: CommentProps[];
+  onDelete?: (postId: string) => Promise<void>;
+  isCommunityPost?: boolean;
+  communityId?: string;
+  currentUserId?: string;
+  isAdmin?: boolean;
 }
 
 interface CommentProps {
@@ -45,6 +50,11 @@ export default function Post({
   fetchPosts,
   userAvatar,
   comments: initialComments = [],
+  onDelete,
+  isCommunityPost = false,
+  communityId,
+  currentUserId,
+  isAdmin,
 }: PostProps) {
   const { user } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
@@ -153,14 +163,11 @@ export default function Post({
   };
 
   const handleDelete = async () => {
-    if (!user) return;
+    if (!user || !onDelete) return;
+    if (!window.confirm('Вы уверены, что хотите удалить этот пост?')) return;
+
     try {
-      const authToken = localStorage.getItem('authToken') || '';
-      const res = await fetch(`/api/posts/${postId}`, {
-        method: 'DELETE',
-        headers: { 'x-user-id': user.userId, 'Authorization': `Bearer ${authToken}` },
-      });
-      if (!res.ok) throw new Error((await res.json()).error || 'Не удалось удалить пост');
+      await onDelete(postId);
       await fetchPosts();
     } catch (err: any) {
       console.error('Post: Ошибка удаления:', err.message);
@@ -342,6 +349,8 @@ export default function Post({
     ? formatDistanceToNow(new Date(createdAt), { addSuffix: true })
     : formatDistanceToNow(new Date(createdAt), { addSuffix: true });
 
+  const canDelete = user?.userId === userId || (isCommunityPost && isAdmin && communityId);
+
   return (
     <Card className="telegram-post-card position-relative">
       <Card.Body>
@@ -446,7 +455,7 @@ export default function Post({
                   </div>
                 )}
               </div>
-              {user && user.userId === userId && (
+              {user && canDelete && (
                 <>
                   <Button
                     variant="outline-secondary"
@@ -517,7 +526,6 @@ export default function Post({
                         </Form>
                       ) : (
                         <>
-                          {/* Блок 1: Имя пользователя, аватарка, время */}
                           <div className="d-flex align-items-center mb-2">
                             <Image
                               src={comment.userId.avatar && comment.userId.avatar.trim() && comment.userId.avatar !== '/default-avatar.png'
@@ -538,8 +546,6 @@ export default function Post({
                               </Card.Subtitle>
                             </div>
                           </div>
-
-                          {/* Блок 2: Текст комментария */}
                           <div className="mb-2">
                             <Card.Text>{comment.content}</Card.Text>
                             {comment.images && comment.images.length > 0 && (
@@ -550,8 +556,6 @@ export default function Post({
                               </div>
                             )}
                           </div>
-
-                          {/* Блок 3: Лайки и реакции */}
                           <div className="d-flex align-items-center justify-content-between">
                             <div>
                               <div

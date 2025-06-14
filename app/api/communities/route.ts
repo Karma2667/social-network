@@ -7,7 +7,7 @@ import path from 'path';
 
 export const config = {
   api: {
-    bodyParser: false, // Отключаем встроенный bodyParser для FormData
+    bodyParser: false,
   },
 };
 

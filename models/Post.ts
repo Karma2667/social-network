@@ -1,8 +1,9 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface PostDocument extends Document {
-  userId: Types.ObjectId;
-  community: Types.ObjectId | null; // Добавлено поле для сообщества
+  userId: Types.ObjectId | null;
+  community: Types.ObjectId | null;
+  isCommunityPost: boolean;
   content: string;
   createdAt: Date;
   updatedAt?: Date;
@@ -16,8 +17,9 @@ export interface PostDocument extends Document {
 
 const PostSchema = new mongoose.Schema<PostDocument>(
   {
-    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    community: { type: Schema.Types.ObjectId, ref: 'Community', default: null }, // Добавлено поле для сообщества
+    userId: { type: Schema.Types.ObjectId, ref: 'User', required: false },
+    community: { type: Schema.Types.ObjectId, ref: 'Community', default: null },
+    isCommunityPost: { type: Boolean, default: false },
     content: { type: String, required: true },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date },
@@ -25,8 +27,8 @@ const PostSchema = new mongoose.Schema<PostDocument>(
     reactions: [{ emoji: String, users: [{ type: String }] }],
     images: [{ type: String, default: [] }],
     comments: [{ type: Schema.Types.ObjectId, ref: 'Comment', default: [] }],
-    username: { type: String }, // Опционально, если нужно хранить локально
-    userAvatar: { type: String }, // Опционально, если нужно хранить локально
+    username: { type: String },
+    userAvatar: { type: String },
   },
   { timestamps: true }
 );

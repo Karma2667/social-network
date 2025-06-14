@@ -32,7 +32,7 @@ if (!global.mongoose) {
   global.mongoose = cached;
 }
 
-async function connectToDB(): Promise<Mongoose> {
+const connectToDB = async (): Promise<Mongoose> => {
   if (cached.conn) {
     console.log('MongoDB: Используется существующее соединение');
     return cached.conn;
@@ -59,6 +59,7 @@ async function connectToDB(): Promise<Mongoose> {
     console.error('MongoDB: Ошибка подключения:', errorMessage);
     throw new Error(`Ошибка подключения к MongoDB: ${errorMessage}`);
   }
-}
+};
 
-export default connectToDB;
+// Экспортируем mongoose и connectToDB
+export { mongoose, connectToDB };

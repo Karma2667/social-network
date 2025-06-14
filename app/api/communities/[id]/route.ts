@@ -6,6 +6,12 @@ import fs from 'fs/promises';
 import path from 'path';
 import mongoose, { Types } from 'mongoose';
 
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   await dbConnect();
   const { id } = params;
@@ -51,7 +57,10 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ error: 'Сообщество не найдено' }, { status: 404 });
     }
 
-    if (!community.admins.includes(userId)) {
+    const isCreator = community.creator?.toString() === userId;
+    const isAdmin = community.admins.includes(userId);
+
+    if (!isCreator && !isAdmin) {
       return NextResponse.json({ error: 'Not authorized to edit' }, { status: 403 });
     }
 
@@ -96,6 +105,9 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       console.log('Processing action:', action, 'for memberId:', memberId);
 
       if (action === 'removeMember') {
+        if (!isCreator) {
+          return NextResponse.json({ error: 'Only the creator can remove members' }, { status: 403 });
+        }
         if (memberId === userId) {
           return NextResponse.json({ error: 'Cannot remove yourself from the community' }, { status: 403 });
         }
@@ -106,6 +118,9 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         community.members.splice(memberIndex, 1);
         console.log('Member removed, updated members:', community.members);
       } else if (action === 'addMember') {
+        if (!isCreator) {
+          return NextResponse.json({ error: 'Only the creator can add members' }, { status: 403 });
+        }
         const user = await User.findById(memberId).select('username _id');
         if (!user) {
           return NextResponse.json({ error: 'User not found' }, { status: 404 });
@@ -114,6 +129,9 @@ export async function PUT(request: Request, { params }: { params: { id: string }
           community.members.push({ _id: user._id, username: user.username });
         }
       } else if (action === 'addModerator') {
+        if (!isCreator) {
+          return NextResponse.json({ error: 'Only the creator can add moderators' }, { status: 403 });
+        }
         const user = await User.findById(memberId).select('_id');
         if (!user) {
           return NextResponse.json({ error: 'User not found' }, { status: 404 });
@@ -126,7 +144,10 @@ export async function PUT(request: Request, { params }: { params: { id: string }
           console.log('Moderator added, updated admins:', community.admins);
         }
       } else if (action === 'removeModerator') {
-        community.admins = community.admins.filter((admin: Types.ObjectId | string) => admin.toString() !== memberId); // Исправлено
+        if (!isCreator) {
+          return NextResponse.json({ error: 'Only the creator can remove moderators' }, { status: 403 });
+        }
+        community.admins = community.admins.filter((admin: Types.ObjectId | string) => admin.toString() !== memberId);
         console.log('Moderator removed, updated admins:', community.admins);
       } else {
         return NextResponse.json({ error: 'Неверное действие' }, { status: 400 });
@@ -163,8 +184,8 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
       return NextResponse.json({ error: 'Сообщество не найдено' }, { status: 404 });
     }
 
-    if (!community.admins.includes(userId)) {
-      return NextResponse.json({ error: 'Not authorized to delete' }, { status: 403 });
+    if (community.creator?.toString() !== userId) {
+      return NextResponse.json({ error: 'Only the creator can delete the community' }, { status: 403 });
     }
 
     await Community.findByIdAndDelete(id);

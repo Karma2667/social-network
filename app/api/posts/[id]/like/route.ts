@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/app/lib/mongoDB';
 import Post from '@/models/Post';
 import mongoose, { Types } from 'mongoose';
+import { connectToDB } from '@/app/lib/mongoDB';
+import dbConnect from '@/lib/mongodb';
 
 // Интерфейс для реакции
 interface Reaction {

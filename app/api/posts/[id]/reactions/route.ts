@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/app/lib/mongoDB';
+import { connectToDB, mongoose } from '@/app/lib/mongoDB';
 import Post from '@/models/Post';
-import mongoose, { Types } from 'mongoose';
 
 // Интерфейс для реакции
 interface Reaction {
@@ -11,7 +10,7 @@ interface Reaction {
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   try {
-    await dbConnect();
+    await connectToDB();
     const { userId, emoji } = await request.json();
 
     if (!mongoose.Types.ObjectId.isValid(params.id) || !mongoose.Types.ObjectId.isValid(userId)) {
@@ -62,7 +61,6 @@ export async function POST(request: Request, { params }: { params: { id: string 
       }
     }
 
-    // Автоматически добавляем лайк при новой реакции
     if (!post.likes.includes(userId)) {
       post.likes.push(userId);
     }
