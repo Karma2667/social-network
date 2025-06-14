@@ -4,6 +4,7 @@ import Community from '@/models/Community';
 import User from '@/models/User';
 import fs from 'fs/promises';
 import path from 'path';
+import mongoose, { Types } from 'mongoose';
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   await dbConnect();
@@ -112,6 +113,23 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         if (!community.members.some((m: any) => m._id?.toString() === memberId)) {
           community.members.push({ _id: user._id, username: user.username });
         }
+      } else if (action === 'addModerator') {
+        const user = await User.findById(memberId).select('_id');
+        if (!user) {
+          return NextResponse.json({ error: 'User not found' }, { status: 404 });
+        }
+        if (!community.members.some((m: any) => m._id?.toString() === memberId)) {
+          return NextResponse.json({ error: 'User is not a member of the community' }, { status: 400 });
+        }
+        if (!community.admins.includes(memberId)) {
+          community.admins.push(memberId);
+          console.log('Moderator added, updated admins:', community.admins);
+        }
+      } else if (action === 'removeModerator') {
+        community.admins = community.admins.filter((admin: Types.ObjectId | string) => admin.toString() !== memberId); // Исправлено
+        console.log('Moderator removed, updated admins:', community.admins);
+      } else {
+        return NextResponse.json({ error: 'Неверное действие' }, { status: 400 });
       }
     }
 

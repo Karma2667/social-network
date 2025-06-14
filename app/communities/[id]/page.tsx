@@ -308,6 +308,32 @@ export default function CommunityPage() {
     }
   };
 
+  const handleToggleModerator = async (memberId: string, isModerator: boolean) => {
+    if (!community || !user?.userId || !isAdmin || loading) {
+      setError('Сообщество или пользователь не инициализированы, или данные загружаются');
+      return;
+    }
+    try {
+      const res = await fetch(`/api/communities/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': user.userId,
+        },
+        body: JSON.stringify({
+          action: isModerator ? 'removeModerator' : 'addModerator',
+          memberId,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text() || 'Не удалось обновить статус модератора');
+      const updatedCommunity = await res.json();
+      setCommunity(updatedCommunity);
+    } catch (err: any) {
+      console.error('Ошибка обновления статуса модератора:', err);
+      setError(err.message);
+    }
+  };
+
   const handleCreateClick = () => router.push('/communities/create');
 
   const handlePostSubmit = async (e: React.FormEvent) => {
@@ -568,14 +594,36 @@ export default function CommunityPage() {
         <Modal.Body>
           {community.members.length > 0 ? (
             <ul>
-              {community.members.map((member) => (
-                <li key={member._id} className="d-flex justify-content-between align-items-center">
-                  {member.username}
-                  {isAdmin && member._id !== user?.userId && (
-                    <Button variant="link" className="text-danger p-0 ms-2" onClick={() => handleRemoveMember(member._id)}><Trash size={16} /></Button>
-                  )}
-                </li>
-              ))}
+              {community.members.map((member) => {
+                const isModerator = community.admins.some((admin) => 
+                  (typeof admin === 'string' ? admin : admin._id) === member._id
+                );
+                return (
+                  <li key={member._id} className="d-flex justify-content-between align-items-center mb-2">
+                    <span>{member.username}</span>
+                    {isAdmin && member._id !== user?.userId && (
+                      <>
+                        <Button
+                          variant={isModerator ? 'outline-danger' : 'outline-success'}
+                          className="ms-2 p-1"
+                          onClick={() => handleToggleModerator(member._id, isModerator)}
+                          size="sm"
+                        >
+                          {isModerator ? 'Снять модератора' : 'Назначить модератора'}
+                        </Button>
+                        <Button
+                          variant="outline-danger"
+                          className="ms-2 p-1"
+                          onClick={() => handleRemoveMember(member._id)}
+                          size="sm"
+                        >
+                          <Trash size={16} />
+                        </Button>
+                      </>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           ) : <p>Нет подписчиков.</p>}
         </Modal.Body>
