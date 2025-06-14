@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongoDB';
 import Post from '@/models/Post';
-import Notification from '@/models/Notification';
-import mongoose from 'mongoose';
+import mongoose, { Types } from 'mongoose';
+
+// Интерфейс для реакции
+interface Reaction {
+  emoji: string;
+  users: string[];
+}
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   try {
@@ -24,29 +29,40 @@ export async function POST(request: Request, { params }: { params: { id: string 
       return NextResponse.json({ error: 'Пост не найден' }, { status: 404 });
     }
 
-    if (!post.reactions) post.reactions = [];
-    if (!post.likes) post.likes = [];
+    post.reactions = post.reactions || [];
+    post.likes = post.likes || [];
 
-    if (post.likes.includes(userId)) {
+    const wasLiked = post.likes.includes(userId);
+    if (wasLiked) {
       post.likes = post.likes.filter((id: string) => id !== userId);
+      // Удаляем реакцию "👍", если она была связана с этим лайком
+      const thumbsUpReaction = post.reactions.find((r: Reaction) => r.emoji === '👍' && r.users.includes(userId));
+      if (thumbsUpReaction) {
+        thumbsUpReaction.users = thumbsUpReaction.users.filter((id: string) => id !== userId);
+        if (thumbsUpReaction.users.length === 0) {
+          post.reactions = post.reactions.filter((r: Reaction) => r.users.length > 0);
+        }
+      }
     } else {
       post.likes.push(userId);
+      // Добавляем реакцию "👍", если её ещё нет
+      if (!post.reactions.some((r: Reaction) => r.emoji === '👍' && r.users.includes(userId))) {
+        const reactionIndex = post.reactions.findIndex((r: Reaction) => r.emoji === '👍');
+        if (reactionIndex === -1) {
+          post.reactions.push({ emoji: '👍', users: [userId] });
+        } else {
+          post.reactions[reactionIndex].users.push(userId);
+        }
+      }
     }
 
     await post.save();
 
-    if (post.userId._id.toString() !== userId && !post.likes.includes(userId)) {
-      await Notification.create({
-        userId: post.userId._id,
-        type: 'post_like',
-        content: `Ваш пост получил лайк от пользователя ${headerUserId}`,
-        relatedId: post._id,
-        relatedModel: 'Post',
-        senderId: userId,
-      });
-    }
-
-    return NextResponse.json(post);
+    return NextResponse.json({
+      _id: post._id.toString(),
+      likes: post.likes,
+      reactions: post.reactions,
+    });
   } catch (error: any) {
     console.error('Ошибка в POST /api/posts/[id]/like:', error);
     return NextResponse.json({ error: error.message || 'Внутренняя ошибка сервера' }, { status: 500 });

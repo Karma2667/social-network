@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongoDB';
 import Post from '@/models/Post';
-import Notification from '@/models/Notification';
-import mongoose from 'mongoose';
+import mongoose, { Types } from 'mongoose';
+
+// Интерфейс для реакции
+interface Reaction {
+  emoji: string;
+  users: string[];
+}
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   try {
@@ -33,15 +38,23 @@ export async function POST(request: Request, { params }: { params: { id: string 
       return NextResponse.json({ error: 'Пост не найден' }, { status: 404 });
     }
 
-    if (!post.reactions) post.reactions = [];
-    if (!post.likes) post.likes = [];
+    post.reactions = post.reactions || [];
+    post.likes = post.likes || [];
 
-    const userCurrentReaction = post.reactions.find((r: { users: string[] }) => r.users.includes(userId));
+    const userCurrentReaction = post.reactions.find((r: Reaction) => r.users.includes(userId));
     if (userCurrentReaction && userCurrentReaction.emoji === emoji) {
-      post.reactions = post.reactions.filter((r: { users: string[] }) => !r.users.includes(userId));
+      userCurrentReaction.users = userCurrentReaction.users.filter((id: string) => id !== userId);
+      if (userCurrentReaction.users.length === 0) {
+        post.reactions = post.reactions.filter((r: Reaction) => r.users.length > 0);
+      }
     } else {
-      if (userCurrentReaction) post.reactions = post.reactions.filter((r: { users: string[] }) => !r.users.includes(userId));
-      const reactionIndex = post.reactions.findIndex((r: { emoji: string }) => r.emoji === emoji);
+      if (userCurrentReaction) {
+        userCurrentReaction.users = userCurrentReaction.users.filter((id: string) => id !== userId);
+        if (userCurrentReaction.users.length === 0) {
+          post.reactions = post.reactions.filter((r: Reaction) => r.users.length > 0);
+        }
+      }
+      const reactionIndex = post.reactions.findIndex((r: Reaction) => r.emoji === emoji);
       if (reactionIndex === -1) {
         post.reactions.push({ emoji, users: [userId] });
       } else {
@@ -49,20 +62,18 @@ export async function POST(request: Request, { params }: { params: { id: string 
       }
     }
 
-    await post.save();
-
-    if (post.userId._id.toString() !== userId) {
-      await Notification.create({
-        userId: post.userId._id,
-        type: 'post_reaction',
-        content: `Ваш пост получил реакцию ${emoji} от пользователя ${headerUserId}`,
-        relatedId: post._id,
-        relatedModel: 'Post',
-        senderId: userId,
-      });
+    // Автоматически добавляем лайк при новой реакции
+    if (!post.likes.includes(userId)) {
+      post.likes.push(userId);
     }
 
-    return NextResponse.json(post);
+    await post.save();
+
+    return NextResponse.json({
+      _id: post._id.toString(),
+      likes: post.likes,
+      reactions: post.reactions,
+    });
   } catch (error: any) {
     console.error('Ошибка в POST /api/posts/[id]/reactions:', error);
     return NextResponse.json({ error: error.message || 'Внутренняя ошибка сервера' }, { status: 500 });
