@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
-import { Form, Button } from 'react-bootstrap';
-import { useAuth } from '@/app/lib/AuthContext';
+import { useState, useEffect, useRef } from "react";
+import { Form, Button } from "react-bootstrap";
+import { useAuth } from "@/app/lib/AuthContext";
 
 interface Message {
   _id: string;
@@ -22,43 +22,43 @@ interface ChatProps {
 export default function Chat({ recipientId, recipientUsername }: ChatProps) {
   const { userId } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
-  const [messageInput, setMessageInput] = useState('');
+  const [messageInput, setMessageInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!userId || !recipientId) {
-      console.log('Chat: Пропуск загрузки сообщений:', { userId, recipientId });
+      console.log("Chat: Missing userId or recipientId, skipping fetch");
       return;
     }
 
     const fetchMessages = async () => {
       try {
-        console.log('Chat: Загрузка сообщений для recipientId:', recipientId);
-        const res = await fetch(`/api/messages?recipientId=${recipientId}`, {
-          headers: { 'x-user-id': userId },
-          cache: 'no-store',
+        console.log("Chat: Fetching messages for recipientId:", recipientId);
+        const res = await fetch(`/api/messages?recipientId=${encodeURIComponent(recipientId)}`, {
+          headers: { "x-user-id": userId },
+          cache: "no-store",
         });
-        if (!res.ok) {
-          const errorData = await res.json();
-          console.error('Chat: Ошибка API:', errorData);
-          throw new Error(errorData.error || 'Не удалось загрузить сообщения');
-        }
+        if (!res.ok) throw new Error(`Failed to fetch messages: ${res.statusText}`);
         const data = await res.json();
-        console.log('Chat: Сообщения загружены:', data);
+        console.log("Chat: Messages fetched:", data);
         setMessages(data);
 
-        // Отмечаем непрочитанные сообщения
+        // Mark unread messages as read
         const unreadMessages = data.filter((msg: Message) => !msg.isRead && msg.senderId !== userId);
-        for (const msg of unreadMessages) {
-          await fetch(`/api/messages?messageId=${msg._id}`, {
-            method: 'PATCH',
-            headers: { 'x-user-id': userId },
-          });
+        if (unreadMessages.length > 0) {
+          await Promise.all(
+            unreadMessages.map((msg: Message) =>
+              fetch(`/api/messages?messageId=${msg._id}`, {
+                method: "PATCH",
+                headers: { "x-user-id": userId },
+              })
+            )
+          );
         }
       } catch (err: any) {
-        console.error('Chat: Ошибка загрузки сообщений:', err.message);
+        console.error("Chat: Error fetching messages:", err.message);
         setError(err.message);
       }
     };
@@ -67,39 +67,29 @@ export default function Chat({ recipientId, recipientUsername }: ChatProps) {
   }, [userId, recipientId]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const handleSendMessage = async () => {
-    if (!messageInput.trim() || !userId || !recipientId) {
-      console.log('Chat: Пропуск отправки:', { messageInput, userId, recipientId });
-      return;
-    }
+    if (!messageInput.trim() || !userId || !recipientId) return;
 
+    setSending(true);
     try {
-      setSending(true);
-      console.log('Chat: Отправка сообщения для recipientId:', recipientId);
-      const res = await fetch('/api/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
-        body: JSON.stringify({
-          recipientId,
-          content: messageInput,
-        }),
+      console.log("Chat: Sending message to recipientId:", recipientId);
+      const res = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-user-id": userId },
+        body: JSON.stringify({ recipientId, content: messageInput }),
       });
-      if (!res.ok) {
-        const errorData = await res.json();
-        console.error('Chat: Ошибка API отправки:', errorData);
-        throw new Error(errorData.error || 'Не удалось отправить сообщение');
-      }
+      if (!res.ok) throw new Error(`Failed to send message: ${res.statusText}`);
       const newMessage = await res.json();
-      console.log('Chat: Сообщение отправлено:', newMessage);
+      console.log("Chat: Message sent:", newMessage);
       setMessages((prev) => [...prev, newMessage]);
-      setMessageInput('');
-      setSending(false);
+      setMessageInput("");
     } catch (err: any) {
-      console.error('Chat: Ошибка отправки:', err.message);
+      console.error("Chat: Error sending message:", err.message);
       setError(err.message);
+    } finally {
       setSending(false);
     }
   };
@@ -110,14 +100,14 @@ export default function Chat({ recipientId, recipientUsername }: ChatProps) {
       {messages.map((msg) => (
         <div
           key={msg._id}
-          className={`telegram-message ${msg.senderId === userId ? 'sent' : 'received'} mb-2`}
+          className={`telegram-message ${msg.senderId === userId ? "sent" : "received"} mb-2`}
         >
           <div>{msg.content}</div>
           <div className="telegram-message-time text-muted">
             {new Date(msg.createdAt).toLocaleTimeString()}
             {msg.senderId === userId && (
-              <span className={msg.isRead ? 'is-read' : ''}>
-                {msg.isRead ? '✓✓' : '✓'}
+              <span className={msg.isRead ? "is-read" : ""}>
+                {msg.isRead ? "✓✓" : "✓"}
               </span>
             )}
           </div>

@@ -1,42 +1,41 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useAuth } from '@/app/lib/ClientAuthProvider';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { Container, Row, Col, Form, ListGroup, Button, FormControl, Alert } from 'react-bootstrap';
-import Link from 'next/link';
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useAuth } from "@/app/lib/AuthContext";
+import { useRouter, useParams } from "next/navigation";
+import { Container, Row, Col, Form, ListGroup, Button, FormControl, Alert } from "react-bootstrap";
+import Link from "next/link";
+import Chat from "@/app/Components/Chat";
 
 function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; currentUserId: string }) {
   const [messages, setMessages] = useState<any[]>([]);
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchMessages = useCallback(async (retryCount = 3) => {
     if (!chatUserId) return;
-    console.log('ChatArea: Загрузка сообщений для chatUserId:', chatUserId);
+    console.log("ChatArea: Загрузка сообщений для chatUserId:", chatUserId);
     try {
       const res = await fetch(`/api/messages?recipientId=${encodeURIComponent(chatUserId)}`, {
         headers: {
-          'x-user-id': currentUserId,
-          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+          "x-user-id": currentUserId,
+          "Authorization": `Bearer ${localStorage.getItem("authToken") || ""}`,
         },
-        cache: 'no-store',
+        cache: "no-store",
       });
-      if (!res.ok) {
-        throw new Error(`HTTP ошибка ${res.status}: ${res.statusText}`);
-      }
+      if (!res.ok) throw new Error(`HTTP ошибка ${res.status}: ${res.statusText}`);
       const data = await res.json();
-      console.log('ChatArea: Сообщения загружены:', data);
+      console.log("ChatArea: Сообщения загружены:", data);
       setMessages(data);
       setError(null);
     } catch (err: any) {
-      console.error('ChatArea: Ошибка загрузки сообщений:', err.message);
+      console.error("ChatArea: Ошибка загрузки сообщений:", err.message);
       if (retryCount > 0) {
         console.log(`ChatArea: Повторная попытка (${retryCount} осталось)`);
         setTimeout(() => fetchMessages(retryCount - 1), 1000);
       } else {
-        setError('Не удалось загрузить сообщения. Проверьте подключение к сети.');
+        setError("Не удалось загрузить сообщения. Проверьте подключение к сети.");
       }
     }
   }, [chatUserId, currentUserId]);
@@ -51,23 +50,23 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
     setSubmitting(true);
 
     try {
-      const res = await fetch('/api/messages', {
-        method: 'POST',
+      const res = await fetch("/api/messages", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': currentUserId,
-          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+          "Content-Type": "application/json",
+          "x-user-id": currentUserId,
+          "Authorization": `Bearer ${localStorage.getItem("authToken") || ""}`,
         },
         body: JSON.stringify({ recipientId: chatUserId, content: message }),
       });
-      console.log('ChatArea: Ответ /api/messages:', res.status, res.statusText);
-      if (!res.ok) throw new Error('Ошибка отправки сообщения');
+      console.log("ChatArea: Ответ /api/messages:", res.status, res.statusText);
+      if (!res.ok) throw new Error("Ошибка отправки сообщения");
       const newMessage = await res.json();
       setMessages((prev) => [...prev, newMessage]);
-      setMessage('');
+      setMessage("");
     } catch (err: any) {
-      console.error('ChatArea: Ошибка отправки:', err.message);
-      setError('Не удалось отправить сообщение.');
+      console.error("ChatArea: Ошибка отправки:", err.message);
+      setError("Не удалось отправить сообщение.");
     } finally {
       setSubmitting(false);
     }
@@ -78,22 +77,20 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
   }
 
   return (
-    <div className="p-3" style={{ height: 'calc(100vh - 56px)', display: 'flex', flexDirection: 'column' }}>
+    <div className="p-3" style={{ height: "calc(100vh - 56px)", display: "flex", flexDirection: "column" }}>
       {error && <Alert variant="danger">{error}</Alert>}
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div style={{ flex: 1, overflowY: "auto" }}>
         {messages.map((msg) => (
           <div
             key={msg._id}
-            className={`mb-3 ${msg.senderId === currentUserId ? 'text-end' : 'text-start'}`}
+            className={`mb-3 ${msg.senderId === currentUserId ? "text-end" : "text-start"}`}
           >
             <span
-              className={`p-2 rounded ${msg.senderId === currentUserId ? 'bg-primary text-white' : 'bg-light'}`}
+              className={`p-2 rounded ${msg.senderId === currentUserId ? "bg-primary text-white" : "bg-light"}`}
             >
               {msg.content}
               {msg.senderId === currentUserId && (
-                <span className="ms-2 small text-muted">
-                  {msg.isRead ? '✓✓' : '✓'}
-                </span>
+                <span className="ms-2 small text-muted">{msg.isRead ? "✓✓" : "✓"}</span>
               )}
             </span>
           </div>
@@ -108,7 +105,7 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
             disabled={submitting}
           />
           <Button type="submit" disabled={submitting || !message.trim()} className="ms-2">
-            {submitting ? '...' : 'Отправить'}
+            {submitting ? "..." : "Отправить"}
           </Button>
         </div>
       </Form>
@@ -119,52 +116,60 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
 export default function ChatPage() {
   const { userId, isInitialized, username } = useAuth();
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const params = useParams();
+  const chatId = Array.isArray(params.id) ? params.id[0] : params.id; // Приводим к string | undefined
+  const selectedChatUserId: string | null = chatId || null; // Явно приводим к string | null
   const [chats, setChats] = useState<any[]>([]);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const [isDesktop, setIsDesktop] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const selectedChatUserId = searchParams.get('chat');
   const fetchChatsRef = useRef(false);
   const lastFetchTime = useRef(0);
 
-  console.log('ChatPage: Инициализация, userId:', userId, 'isInitialized:', isInitialized, 'username:', username, 'selectedChatUserId:', selectedChatUserId);
+  console.log(
+    "ChatPage: Инициализация, userId:",
+    userId,
+    "isInitialized:",
+    isInitialized,
+    "username:",
+    username,
+    "selectedChatUserId:",
+    selectedChatUserId
+  );
 
   useEffect(() => {
     const checkDesktop = () => {
       const desktop = window.innerWidth > 768;
       setIsDesktop(desktop);
-      console.log('ChatPage: Проверка isDesktop:', desktop);
+      console.log("ChatPage: Проверка isDesktop:", desktop);
     };
     checkDesktop();
-    window.addEventListener('resize', checkDesktop);
-    return () => window.removeEventListener('resize', checkDesktop);
+    window.addEventListener("resize", checkDesktop);
+    return () => window.removeEventListener("resize", checkDesktop);
   }, []);
 
   const fetchChats = useCallback(async (retryCount = 3) => {
     if (!userId || !isInitialized || fetchChatsRef.current) return;
     const now = Date.now();
-    if (now - lastFetchTime.current < 1000) return; // Дебаунсинг 1 сек
+    if (now - lastFetchTime.current < 1000) return; // Debounce 1 second
     fetchChatsRef.current = true;
     lastFetchTime.current = now;
-    console.log('ChatPage: Загрузка чатов для userId:', userId);
+    console.log("ChatPage: Загрузка чатов для userId:", userId);
     try {
       const res = await fetch(`/api/chats?search=${encodeURIComponent(search)}`, {
         headers: {
-          'x-user-id': userId,
-          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+          "x-user-id": userId,
+          "Authorization": `Bearer ${localStorage.getItem("authToken") || ""}`,
         },
-        cache: 'no-store',
+        cache: "no-store",
       });
-      if (!res.ok) {
-        throw new Error(`HTTP ошибка ${res.status}: ${res.statusText}`);
-      }
+      if (!res.ok) throw new Error(`HTTP ошибка ${res.status}: ${res.statusText}`);
       const data = await res.json();
-      console.log('ChatPage: Чаты загружены:', data);
+      console.log("ChatPage: Чаты загружены:", data);
       setChats(data);
       setError(null);
     } catch (err: any) {
-      console.error('ChatPage: Ошибка загрузки чатов:', err.message);
+      console.error("ChatPage: Ошибка загрузки чатов:", err.message);
       if (retryCount > 0) {
         console.log(`ChatPage: Повторная попытка (${retryCount} осталось)`);
         setTimeout(() => {
@@ -172,7 +177,7 @@ export default function ChatPage() {
           fetchChats(retryCount - 1);
         }, 1000);
       } else {
-        setError('Не удалось загрузить чаты. Проверьте подключение к сети.');
+        setError("Не удалось загрузить чаты. Проверьте подключение к сети.");
       }
     } finally {
       fetchChatsRef.current = false;
@@ -181,26 +186,28 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!isInitialized) {
-      console.log('ChatPage: Ожидание инициализации');
+      console.log("ChatPage: Ожидание инициализации");
       return;
     }
     if (!userId) {
-      console.log('ChatPage: Нет userId, перенаправление на /login');
-      router.replace('/login');
+      console.log("ChatPage: Нет userId, перенаправление на /login");
+      router.replace("/login");
       return;
     }
     fetchChats();
-    const interval = setInterval(fetchChats, 5000); // Обновление каждые 5 сек
-    return () => clearInterval(interval);
+    const intervalId = setInterval(() => {
+      if (!fetchChatsRef.current) fetchChats(); // Обновление только если предыдущий запрос завершён
+    }, 5000); // Обновление каждые 5 сек
+    return () => clearInterval(intervalId);
   }, [userId, isInitialized, router, fetchChats]);
 
   if (!isInitialized) {
-    console.log('ChatPage: Ожидание инициализации');
+    console.log("ChatPage: Ожидание инициализации");
     return <div>Загрузка...</div>;
   }
 
   if (!userId) {
-    console.log('ChatPage: Нет userId, отображение пустого состояния');
+    console.log("ChatPage: Нет userId, отображение пустого состояния");
     return null;
   }
 
@@ -212,10 +219,10 @@ export default function ChatPage() {
     <Container fluid className="mt-3">
       {error && <Alert variant="danger">{error}</Alert>}
       <Row>
-        <Col md={4} className="border-end" style={{ backgroundColor: '#f8f9fa', height: 'calc(100vh - 56px)' }}>
+        <Col md={4} className="border-end" style={{ backgroundColor: "#f8f9fa", height: "calc(100vh - 56px)" }}>
           <div className="p-3">
             <Form.Group className="mb-3">
-              <Form.Control
+              <FormControl
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -228,12 +235,12 @@ export default function ChatPage() {
                 <ListGroup.Item
                   key={chat.user._id}
                   as={Link}
-                  href={`/chat?chat=${chat.user._id}`}
+                  href={`/chat/${chat.user._id}`} // Динамический маршрут
                   action
                   active={selectedChatUserId === chat.user._id}
                 >
                   @{chat.user.username} {chat.user.name && `(${chat.user.name})`}
-                  <div className="small text-muted">{chat.lastMessage?.content || 'Нет сообщений'}</div>
+                  <div className="small text-muted">{chat.lastMessage?.content || "Нет сообщений"}</div>
                 </ListGroup.Item>
               ))}
             </ListGroup>
