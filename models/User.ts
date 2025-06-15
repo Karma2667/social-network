@@ -1,20 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
-// Предопределённые интересы
-const INTERESTS = [
-  'Программирование',
-  'Музыка',
-  'Игры',
-  'Путешествия',
-  'Спорт',
-  'Книги',
-  'Фильмы',
-  'Кулинария',
-  'Искусство',
-  'Наука',
-];
-
-// Интерфейс для документа User
 interface IUser extends Document {
   username: string;
   name?: string;
@@ -22,12 +7,12 @@ interface IUser extends Document {
   password: string;
   bio?: string;
   interests: string[];
+  avatar?: string;
   createdAt: Date;
   posts?: mongoose.Types.ObjectId[];
   following?: mongoose.Types.ObjectId[];
 }
 
-// Интерфейс для lean-версии User с полной структурой
 export interface LeanUser {
   _id: string;
   username: string;
@@ -36,15 +21,10 @@ export interface LeanUser {
   password?: string;
   bio?: string;
   interests?: string[];
+  avatar?: string;
   createdAt?: Date;
   posts?: any[];
   following?: { _id: string; username: string }[];
-}
-
-// Интерфейс для ограниченного результата (только _id и username)
-export interface LeanUserMinimal {
-  _id: string;
-  username: string;
 }
 
 const UserSchema = new Schema<IUser>({
@@ -53,15 +33,12 @@ const UserSchema = new Schema<IUser>({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   bio: { type: String },
-  interests: [{ 
-    type: String, 
-    default: [], 
-    enum: INTERESTS,
-    validate: {
-      validator: (v: string[]) => v.length <= 5,
-      message: 'Максимум 5 интересов'
-    }
+  interests: [{
+    type: String,
+    default: [],
+    validate: (v: string[]) => v.length <= 5,
   }],
+  avatar: { type: String },
   createdAt: { type: Date, default: Date.now },
   posts: [{ type: Schema.Types.ObjectId, ref: 'Post' }],
   following: [{ type: Schema.Types.ObjectId, ref: 'User' }],

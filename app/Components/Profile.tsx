@@ -1,43 +1,35 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Container, Form, Button, Alert, Modal, FormCheck } from 'react-bootstrap';
+import { useState, useEffect, useRef } from 'react';
+import { Container, Form, Button, Alert, Modal, FormCheck, Image } from 'react-bootstrap';
 import { useAuth } from '@/app/lib/ClientAuthProvider';
 
 const INTERESTS = [
-  'Программирование',
-  'Музыка',
-  'Игры',
-  'Путешествия',
-  'Спорт',
-  'Книги',
-  'Фильмы',
-  'Кулинария',
-  'Искусство',
-  'Наука',
+  'Программирование', 'Музыка', 'Игры', 'Путешествия', 'Спорт',
+  'Книги', 'Фильмы', 'Кулинария', 'Искусство', 'Наука',
 ];
 
 interface ProfileData {
+  _id: string;
   username: string;
   name?: string;
   bio: string;
-  avatar: string;
+  avatar?: string;
   interests: string[];
 }
 
 export default function Profile() {
   const { userId, isInitialized, username } = useAuth();
   const [profile, setProfile] = useState<ProfileData | null>(null);
-  const [newUsername, setNewUsername] = useState('');
   const [name, setName] = useState('');
+  const [newUsername, setNewUsername] = useState('');
   const [bio, setBio] = useState('');
   const [avatar, setAvatar] = useState<File | null>(null);
   const [interests, setInterests] = useState<string[]>([]);
   const [showInterestsModal, setShowInterestsModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-
-  console.log('Profile: Инициализация, userId:', userId, 'isInitialized:', isInitialized, 'username:', username);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!isInitialized || !userId) {
@@ -46,14 +38,12 @@ export default function Profile() {
     }
     setLoading(true);
     const fetchProfile = async () => {
-      console.log('Profile: Загрузка профиля для userId:', userId);
       try {
         const authToken = localStorage.getItem('authToken') || '';
+        const headers: Record<string, string> = { 'Authorization': `Bearer ${authToken}` };
+        if (userId) headers['x-user-id'] = userId;
         const res = await fetch('/api/profile', {
-          headers: {
-            'x-user-id': userId,
-            'Authorization': `Bearer ${authToken}`,
-          },
+          headers,
           cache: 'no-store',
         });
         if (!res.ok) {
@@ -61,7 +51,6 @@ export default function Profile() {
           throw new Error(`Не удалось загрузить профиль: ${res.status} ${errorData.error || ''}`);
         }
         const data: ProfileData = await res.json();
-        console.log('Profile: Данные профиля:', data);
         setProfile(data);
         setNewUsername(data.username || '');
         setName(data.name || '');
@@ -77,64 +66,77 @@ export default function Profile() {
     fetchProfile();
   }, [userId, isInitialized]);
 
+  const checkUsernameAvailability = async (username: string) => {
+    if (!username.trim()) return false;
+    try {
+      const authToken = localStorage.getItem('authToken') || '';
+      const headers: Record<string, string> = { 'Authorization': `Bearer ${authToken}` };
+      if (userId) headers['x-user-id'] = userId;
+      const res = await fetch(`/api/profile?username=${encodeURIComponent(username)}`, {
+        headers,
+      });
+      const data = await res.json();
+      return res.ok && !data.exists;
+    } catch {
+      return false;
+    }
+  };
+
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     if (!userId) {
       setError('Пользователь не аутентифицирован');
-      console.log('Profile: Ошибка: Пользователь не аутентифицирован');
+      return;
+    }
+    if (!newUsername.trim()) {
+      setError('Введите имя пользователя');
       return;
     }
     if (interests.length === 0) {
       setError('Выберите хотя бы один интерес');
-      console.log('Profile: Ошибка: Не выбраны интересы');
       return;
     }
+    if (interests.length > 5) {
+      setError('Максимум 5 интересов');
+      return;
+    }
+
+    const isUsernameAvailable = await checkUsernameAvailability(newUsername);
+    if (!isUsernameAvailable && (!profile || profile.username !== newUsername)) {
+      setError('Имя пользователя уже занято');
+      return;
+    }
+
     try {
-      let avatarUrl = profile?.avatar || '/default-avatar.png';
-      if (avatar) {
-        const formData = new FormData();
-        formData.append('files', avatar);
-        const uploadRes = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-        });
-        if (!uploadRes.ok) throw new Error('Не удалось загрузить аватар');
-        const { files } = await uploadRes.json();
-        avatarUrl = files[0];
-      }
-
-      if (interests.length > 5) {
-        setError('Максимум 5 интересов');
-        console.log('Profile: Ошибка: Слишком много интересов:', interests);
-        return;
-      }
-
-      const updateData = { username: newUsername, name, bio, avatar: avatarUrl, interests };
-      console.log('Profile: Обновление профиля:', updateData);
       const authToken = localStorage.getItem('authToken') || '';
+      const headers: Record<string, string> = { 'Authorization': `Bearer ${authToken}` };
+      if (userId) headers['x-user-id'] = userId;
+      const formData = new FormData();
+      formData.append('name', name || '');
+      formData.append('username', newUsername);
+      formData.append('bio', bio || '');
+      formData.append('interests', JSON.stringify(interests));
+      if (avatar) formData.append('avatar', avatar);
+
       const res = await fetch('/api/profile', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': userId,
-          'Authorization': `Bearer ${authToken}`,
-        },
-        body: JSON.stringify(updateData),
+        headers,
+        body: formData,
       });
 
       if (!res.ok) {
         const errorData = await res.json();
         throw new Error(`Не удалось обновить профиль: ${res.status} ${errorData.error || ''}`);
       }
+
       const updatedProfile: ProfileData = await res.json();
-      console.log('Profile: Профиль обновлен:', updatedProfile);
       setProfile(updatedProfile);
       setAvatar(null);
       setShowInterestsModal(false);
     } catch (err: any) {
-      setError(err.message);
       console.error('Profile: Ошибка обновления:', err.message);
+      setError(err.message);
     }
   };
 
@@ -142,40 +144,52 @@ export default function Profile() {
     setInterests((prev) =>
       prev.includes(interest)
         ? prev.filter((i) => i !== interest)
-        : [...prev, interest]
+        : prev.length < 5
+        ? [...prev, interest]
+        : prev
     );
   };
 
-  if (!isInitialized || loading) {
-    console.log('Profile: Рендеринг: Загрузка...');
-    return <div>Загрузка...</div>;
-  }
-  if (!userId) {
-    console.log('Profile: Рендеринг: Нет userId, ожидание перенаправления');
-    return null;
-  }
+  const handleAvatarChange = () => {
+    if (avatarInputRef.current) avatarInputRef.current.click();
+  };
 
-  console.log('Profile: Рендеринг формы, profile:', profile);
+  if (!isInitialized || loading) return <div>Загрузка...</div>;
+  if (!userId) return null;
 
   return (
     <Container className="telegram-profile">
       <h2>Профиль @{username}</h2>
-      <img
-        src={profile?.avatar || '/default-avatar.png'}
-        alt="Аватар"
-        className="telegram-profile-avatar"
-      />
+      <div className="text-center mb-4">
+        <Image
+          src={profile?.avatar || '/default-avatar.png'}
+          alt="Аватар"
+          roundedCircle
+          className="telegram-profile-avatar"
+          style={{ width: '150px', height: '150px' }}
+          onError={(e) => { (e.target as HTMLImageElement).src = '/default-avatar.png'; }}
+        />
+        <Button variant="outline-primary" onClick={handleAvatarChange} className="mt-2">
+          Изменить аватар
+        </Button>
+        <input
+          type="file"
+          accept="image/*"
+          ref={avatarInputRef}
+          onChange={(e) => setAvatar(e.target.files?.[0] || null)}
+          style={{ display: 'none' }}
+        />
+      </div>
       {error && <Alert variant="danger">{error}</Alert>}
-      {profile ? (
+      {profile && (
         <Form onSubmit={handleUpdate} className="w-100" style={{ maxWidth: '400px' }}>
           <Form.Group className="mb-3">
-            <Form.Label>Никнейм</Form.Label>
+            <Form.Label>Имя</Form.Label>
             <Form.Control
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Введите никнейм"
-              className="telegram-post-input"
+              placeholder="Введите имя"
             />
           </Form.Group>
           <Form.Group className="mb-3">
@@ -184,8 +198,7 @@ export default function Profile() {
               type="text"
               value={newUsername}
               onChange={(e) => setNewUsername(e.target.value)}
-              placeholder="Введите имя пользователя"
-              className="telegram-post-input"
+              placeholder="Введите @username"
             />
           </Form.Group>
           <Form.Group className="mb-3">
@@ -196,36 +209,20 @@ export default function Profile() {
               value={bio}
               onChange={(e) => setBio(e.target.value)}
               placeholder="Расскажите о себе"
-              className="telegram-post-input"
             />
           </Form.Group>
           <Form.Group className="mb-3">
             <Button
               variant="outline-primary"
               onClick={() => setShowInterestsModal(true)}
-              className="telegram-profile-button"
             >
               Выбрать интересы
             </Button>
           </Form.Group>
-          <Form.Group className="mb-3">
-            <Form.Label>Аватар</Form.Label>
-            <Form.Control
-              type="file"
-              accept="image/*"
-              onChange={(e) => {
-                const files = (e.target as HTMLInputElement).files;
-                setAvatar(files && files.length > 0 ? files[0] : null);
-              }}
-              className="telegram-post-input"
-            />
-          </Form.Group>
-          <Button variant="primary" type="submit" className="telegram-profile-button">
+          <Button variant="primary" type="submit">
             Обновить профиль
           </Button>
         </Form>
-      ) : (
-        <p>Профиль не загружен</p>
       )}
       <Modal show={showInterestsModal} onHide={() => setShowInterestsModal(false)}>
         <Modal.Header closeButton>
@@ -244,24 +241,17 @@ export default function Profile() {
           ))}
         </Modal.Body>
         <Modal.Footer>
-          <Button
-            variant="secondary"
-            onClick={() => setShowInterestsModal(false)}
-          >
+          <Button variant="secondary" onClick={() => setShowInterestsModal(false)}>
             Закрыть
           </Button>
-          <Button
-            variant="primary"
-            onClick={() => setShowInterestsModal(false)}
-            className="telegram-profile-button"
-          >
+          <Button variant="primary" onClick={() => setShowInterestsModal(false)}>
             Сохранить
           </Button>
         </Modal.Footer>
       </Modal>
       <h4 className="mt-4">Мои интересы</h4>
       <div>
-        {profile && profile.interests && profile.interests.length > 0 ? (
+        {profile?.interests.length ? (
           profile.interests.map((interest) => (
             <span key={interest} className="badge bg-primary me-1">
               {interest}

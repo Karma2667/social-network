@@ -11,8 +11,6 @@ export interface PostDocument extends Document {
   reactions: { emoji: string; users: string[] }[];
   images: string[];
   comments: Types.ObjectId[];
-  username?: string;
-  userAvatar?: string;
 }
 
 const PostSchema = new mongoose.Schema<PostDocument>(
@@ -27,8 +25,6 @@ const PostSchema = new mongoose.Schema<PostDocument>(
     reactions: [{ emoji: String, users: [{ type: String }] }],
     images: [{ type: String, default: [] }],
     comments: [{ type: Schema.Types.ObjectId, ref: 'Comment', default: [] }],
-    username: { type: String },
-    userAvatar: { type: String },
   },
   { timestamps: true }
 );
