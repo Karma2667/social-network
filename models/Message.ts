@@ -1,4 +1,4 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema, Document } from "mongoose";
 
 // Интерфейс для документа Message
 interface IMessage extends Document {
@@ -8,6 +8,7 @@ interface IMessage extends Document {
   createdAt: Date;
   isRead: boolean;
   readBy: string[];
+  editedAt?: Date; // Добавляем поле для времени редактирования
   __v?: number;
 }
 
@@ -20,6 +21,7 @@ export interface LeanMessage {
   createdAt: Date;
   isRead: boolean;
   readBy: string[];
+  editedAt?: Date; // Добавляем в lean-версию
   __v?: number;
 }
 
@@ -30,6 +32,7 @@ const MessageSchema = new Schema<IMessage>({
   createdAt: { type: Date, default: Date.now },
   isRead: { type: Boolean, default: false },
   readBy: [{ type: String }],
+  editedAt: { type: Date }, // Опциональное поле для времени редактирования
 });
 
-export default mongoose.models.Message || mongoose.model<IMessage>('Message', MessageSchema);
+export default mongoose.models.Message || mongoose.model<IMessage>("Message", MessageSchema);

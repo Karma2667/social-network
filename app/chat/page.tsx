@@ -3,9 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/app/lib/AuthContext";
 import { useRouter, useParams } from "next/navigation";
-import { Container, Row, Col, Form, ListGroup, Button, FormControl, Alert, Image } from "react-bootstrap";
+import { Container, Row, Col, Form, ListGroup, Button, FormControl, Alert, Image, Modal, Button as BootstrapButton } from "react-bootstrap";
 import Link from "next/link";
-import Chat from "@/app/Components/Chat";
 
 interface Message {
   _id: string;
@@ -15,6 +14,7 @@ interface Message {
   createdAt: string;
   isRead: boolean;
   readBy: string[];
+  isEditing?: boolean; // Добавляем для отслеживания редактирования
 }
 
 interface Chat {
@@ -23,10 +23,9 @@ interface Chat {
     username: string;
     name?: string;
     interests?: string[];
-    avatar?: string; // Добавляем поле avatar в интерфейс
+    avatar?: string;
   };
   lastMessage?: Message;
-  avatar?: string; // Уберем фиксированный дефолт, будем брать из user.avatar
 }
 
 function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; currentUserId: string }) {
@@ -34,6 +33,9 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editMessageId, setEditMessageId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const fetchMessages = useCallback(async (retryCount = 3) => {
@@ -99,6 +101,60 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
     }
   };
 
+  const handleEditMessage = async (messageId: string) => {
+    if (!editContent.trim() || !messageId) return;
+    setSubmitting(true);
+
+    try {
+      const res = await fetch(`/api/messages`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": currentUserId,
+          "Authorization": `Bearer ${localStorage.getItem("authToken") || ""}`,
+        },
+        body: JSON.stringify({ messageId, content: editContent }),
+      });
+      console.log("ChatArea: Ответ /api/messages (edit):", res.status, res.statusText);
+      if (!res.ok) throw new Error("Ошибка редактирования сообщения");
+      const updatedMessage = await res.json();
+      setMessages((prev) =>
+        prev.map((msg) => (msg._id === messageId ? { ...msg, content: updatedMessage.content, isEditing: false } : msg))
+      );
+      setEditMessageId(null);
+      setEditContent("");
+    } catch (err: any) {
+      console.error("ChatArea: Ошибка редактирования:", err.message);
+      setError("Не удалось отредактировать сообщение.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteMessage = async (messageId: string) => {
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/messages`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": currentUserId,
+          "Authorization": `Bearer ${localStorage.getItem("authToken") || ""}`,
+        },
+        body: JSON.stringify({ messageId }),
+      });
+      console.log("ChatArea: Ответ /api/messages (delete):", res.status, res.statusText);
+      if (!res.ok) throw new Error("Ошибка удаления сообщения");
+      setMessages((prev) => prev.filter((msg) => msg._id !== messageId));
+      setShowDeleteConfirm(null);
+    } catch (err: any) {
+      console.error("ChatArea: Ошибка удаления:", err.message);
+      setError("Не удалось удалить сообщение.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (!chatUserId) {
     return <div className="p-3 telegram-placeholder">Выберите чат</div>;
   }
@@ -117,27 +173,101 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
               alignItems: "flex-end",
             }}
           >
-            <div
-              className="telegram-message-bubble p-2 rounded"
-              style={{
-                backgroundColor: msg.senderId === currentUserId ? "#0088cc" : "#e9ecef",
-                color: msg.senderId === currentUserId ? "#fff" : "#000",
-                maxWidth: "70%",
-                borderRadius: "10px",
-                boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-                transition: "all 0.3s ease",
-              }}
-            >
-              {msg.content}
-            </div>
-            <div className="telegram-message-time text-muted small ms-2" style={{ marginBottom: "2px" }}>
-              {new Date(msg.createdAt).toLocaleTimeString()}
-              {msg.senderId === currentUserId && (
-                <span className={msg.isRead ? "is-read" : ""} style={{ marginLeft: "4px" }}>
-                  {msg.isRead ? "✓✓" : "✓"}
-                </span>
-              )}
-            </div>
+            {msg.isEditing ? (
+              <Form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleEditMessage(msg._id);
+                }}
+                style={{ width: "70%", display: "flex", flexDirection: "column" }}
+              >
+                <FormControl
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  autoFocus
+                  style={{
+                    borderRadius: "10px",
+                    padding: "8px",
+                    marginBottom: "5px",
+                  }}
+                />
+                <div style={{ display: "flex", justifyContent: msg.senderId === currentUserId ? "flex-end" : "flex-start" }}>
+                  <Button
+                    variant="primary"
+                    type="submit"
+                    size="sm"
+                    disabled={submitting}
+                    style={{ marginRight: "5px" }}
+                  >
+                    Сохранить
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setEditMessageId(null);
+                      setEditContent("");
+                      setMessages((prev) =>
+                        prev.map((m) => (m._id === msg._id ? { ...m, isEditing: false } : m))
+                      );
+                    }}
+                    disabled={submitting}
+                  >
+                    Отмена
+                  </Button>
+                </div>
+              </Form>
+            ) : (
+              <>
+                <div
+                  className="telegram-message-bubble p-2 rounded"
+                  style={{
+                    backgroundColor: msg.senderId === currentUserId ? "#0088cc" : "#e9ecef",
+                    color: msg.senderId === currentUserId ? "#fff" : "#000",
+                    maxWidth: "70%",
+                    borderRadius: "10px",
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+                    transition: "all 0.3s ease",
+                  }}
+                >
+                  {msg.content}
+                </div>
+                {msg.senderId === currentUserId && !msg.isEditing && (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                    <div className="telegram-message-time text-muted small ms-2" style={{ marginBottom: "2px" }}>
+                      {new Date(msg.createdAt).toLocaleTimeString()}
+                      <span className={msg.isRead ? "is-read" : ""} style={{ marginLeft: "4px" }}>
+                        {msg.isRead ? "✓✓" : "✓"}
+                      </span>
+                    </div>
+                    <div>
+                      <Button
+                        variant="link"
+                        size="sm"
+                        onClick={() => {
+                          setEditMessageId(msg._id);
+                          setEditContent(msg.content);
+                          setMessages((prev) =>
+                            prev.map((m) => (m._id === msg._id ? { ...m, isEditing: true } : m))
+                          );
+                        }}
+                        style={{ padding: "0 5px", color: "#006bb3" }}
+                      >
+                        Редактировать
+                      </Button>
+                      <Button
+                        variant="link"
+                        size="sm"
+                        onClick={() => setShowDeleteConfirm(msg._id)}
+                        style={{ padding: "0 5px", color: "#dc3545" }}
+                      >
+                        Удалить
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         ))}
         <div ref={messagesEndRef} />
@@ -187,6 +317,26 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
           </Button>
         </div>
       </Form>
+
+      {/* Модальное окно подтверждения удаления */}
+      <Modal show={!!showDeleteConfirm} onHide={() => setShowDeleteConfirm(null)}>
+        <Modal.Header closeButton>
+          <Modal.Title>Подтверждение удаления</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>Вы уверены, что хотите удалить это сообщение?</Modal.Body>
+        <Modal.Footer>
+          <BootstrapButton variant="secondary" onClick={() => setShowDeleteConfirm(null)}>
+            Отмена
+          </BootstrapButton>
+          <BootstrapButton
+            variant="danger"
+            onClick={() => showDeleteConfirm && handleDeleteMessage(showDeleteConfirm)}
+            disabled={submitting}
+          >
+            Удалить
+          </BootstrapButton>
+        </Modal.Footer>
+      </Modal>
     </div>
   );
 }
@@ -203,8 +353,8 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const fetchChatsRef = useRef(false);
   const lastFetchTime = useRef(0);
-  const [isServerDown, setIsServerDown] = useState(false); // Флаг состояния сервера
-  const [avatarLoadAttempts, setAvatarLoadAttempts] = useState<{ [key: string]: number }>({}); // Ограничение попыток загрузки аватаров
+  const [isServerDown, setIsServerDown] = useState(false);
+  const [avatarLoadAttempts, setAvatarLoadAttempts] = useState<{ [key: string]: number }>({});
 
   console.log(
     "ChatPage: Инициализация, userId:",
@@ -231,7 +381,7 @@ export default function ChatPage() {
   const fetchChats = useCallback(async (retryCount = 3) => {
     if (!userId || !isInitialized || fetchChatsRef.current || isServerDown) return;
     const now = Date.now();
-    if (now - lastFetchTime.current < 1000) return; // Debounce 1 second
+    if (now - lastFetchTime.current < 1000) return;
     fetchChatsRef.current = true;
     lastFetchTime.current = now;
     console.log("ChatPage: Загрузка чатов для userId:", userId);
@@ -245,18 +395,17 @@ export default function ChatPage() {
       });
       if (!res.ok) throw new Error(`HTTP ошибка ${res.status}: ${res.statusText}`);
       const data = await res.json();
-      // Обновляем chats, используя avatar из user.avatar
       const updatedChats = data.map((chat: any) => ({
         user: {
           ...chat.user,
-          avatar: chat.user.avatar || "/default-chat-avatar.png", // Фallback на дефолт, если avatar отсутствует
+          avatar: chat.user.avatar || "/default-chat-avatar.png",
         },
         lastMessage: chat.lastMessage,
       }));
       console.log("ChatPage: Чаты загружены с данными:", JSON.stringify(updatedChats, null, 2));
       setChats(updatedChats);
       setError(null);
-      setIsServerDown(false); // Сброс флага при успешном запросе
+      setIsServerDown(false);
     } catch (err: any) {
       console.error("ChatPage: Ошибка загрузки чатов:", err.message);
       if (err.message.includes("NetworkError")) {
@@ -289,8 +438,8 @@ export default function ChatPage() {
     }
     fetchChats();
     const intervalId = setInterval(() => {
-      if (!fetchChatsRef.current && !isServerDown) fetchChats(); // Останавливаем при проблемах с сервером
-    }, 5000); // Обновление каждые 5 сек
+      if (!fetchChatsRef.current && !isServerDown) fetchChats();
+    }, 5000);
     return () => clearInterval(intervalId);
   }, [userId, isInitialized, router, fetchChats, isServerDown]);
 
@@ -338,7 +487,7 @@ export default function ChatPage() {
                   <ListGroup.Item
                     key={chat.user._id}
                     as={Link}
-                    href={`/chat/${chat.user._id}`} // Динамический маршрут
+                    href={`/chat/${chat.user._id}`}
                     action
                     active={selectedChatUserId === chat.user._id}
                     className="telegram-chat-item"
@@ -377,9 +526,9 @@ export default function ChatPage() {
                                 [username]: (prev[username] || 0) + 1,
                               }));
                               if (attempts < 2) {
-                                (e.target as HTMLImageElement).src = "/default-chat-avatar.png"; // Фallback на дефолт
+                                (e.target as HTMLImageElement).src = "/default-chat-avatar.png";
                               } else {
-                                (e.target as HTMLImageElement).src = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=="; // Пустая заглушка
+                                (e.target as HTMLImageElement).src = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==";
                               }
                             }}
                             onLoad={() => console.log(`Аватар для ${chat.user.username} загружен: ${chat.user.avatar}`)}
