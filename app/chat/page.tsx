@@ -3,8 +3,21 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/app/lib/AuthContext";
 import { useRouter, useParams } from "next/navigation";
-import { Container, Row, Col, Form, ListGroup, Button, FormControl, Alert, Image, Modal, Button as BootstrapButton } from "react-bootstrap";
+import {
+  Container,
+  Row,
+  Col,
+  Form,
+  ListGroup,
+  Button,
+  FormControl,
+  Alert,
+  Image,
+  Modal,
+  Button as BootstrapButton,
+} from "react-bootstrap";
 import Link from "next/link";
+import ReactionPicker from "@/app/Components/ReactionPicker";
 
 interface Message {
   _id: string;
@@ -14,7 +27,8 @@ interface Message {
   createdAt: string;
   isRead: boolean;
   readBy: string[];
-  isEditing?: boolean; // Добавляем для отслеживания редактирования
+  isEditing?: boolean;
+  reactions?: { emoji: string; users: string[] }[];
 }
 
 interface Chat {
@@ -36,6 +50,7 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
   const [editMessageId, setEditMessageId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const fetchMessages = useCallback(async (retryCount = 3) => {
@@ -77,7 +92,6 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
     e.preventDefault();
     if (!chatUserId || !message.trim() || submitting) return;
     setSubmitting(true);
-
     try {
       const res = await fetch("/api/messages", {
         method: "POST",
@@ -104,7 +118,6 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
   const handleEditMessage = async (messageId: string) => {
     if (!editContent.trim() || !messageId) return;
     setSubmitting(true);
-
     try {
       const res = await fetch(`/api/messages`, {
         method: "PUT",
@@ -155,6 +168,33 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
     }
   };
 
+  const handleAddReaction = async (messageId: string, emoji: string) => {
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/messages/${messageId}/reactions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": currentUserId,
+          "Authorization": `Bearer ${localStorage.getItem("authToken") || ""}`,
+        },
+        body: JSON.stringify({ userId: currentUserId, emoji }),
+      });
+      console.log("ChatArea: Ответ /api/messages/[id]/reactions:", res.status, res.statusText);
+      if (!res.ok) throw new Error("Ошибка добавления реакции");
+      const data = await res.json();
+      setMessages((prev) =>
+        prev.map((msg) => (msg._id === messageId ? { ...msg, reactions: data.reactions } : msg))
+      );
+      setShowReactionPicker(null);
+    } catch (err: any) {
+      console.error("ChatArea: Ошибка добавления реакции:", err.message);
+      setError("Не удалось добавить реакцию.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (!chatUserId) {
     return <div className="p-3 telegram-placeholder">Выберите чат</div>;
   }
@@ -171,6 +211,7 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
               display: "flex",
               flexDirection: msg.senderId === currentUserId ? "row-reverse" : "row",
               alignItems: "flex-end",
+              position: "relative",
             }}
           >
             {msg.isEditing ? (
@@ -185,11 +226,7 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
                   value={editContent}
                   onChange={(e) => setEditContent(e.target.value)}
                   autoFocus
-                  style={{
-                    borderRadius: "10px",
-                    padding: "8px",
-                    marginBottom: "5px",
-                  }}
+                  style={{ borderRadius: "10px", padding: "8px", marginBottom: "5px" }}
                 />
                 <div style={{ display: "flex", justifyContent: msg.senderId === currentUserId ? "flex-end" : "flex-start" }}>
                   <Button
@@ -228,18 +265,31 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
                     borderRadius: "10px",
                     boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
                     transition: "all 0.3s ease",
+                    position: "relative",
                   }}
                 >
                   {msg.content}
-                </div>
-                {msg.senderId === currentUserId && !msg.isEditing && (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-                    <div className="telegram-message-time text-muted small ms-2" style={{ marginBottom: "2px" }}>
-                      {new Date(msg.createdAt).toLocaleTimeString()}
-                      <span className={msg.isRead ? "is-read" : ""} style={{ marginLeft: "4px" }}>
-                        {msg.isRead ? "✓✓" : "✓"}
-                      </span>
+                  {msg.reactions && msg.reactions.length > 0 && (
+                    <div style={{ marginTop: "5px", display: "flex", gap: "5px", flexWrap: "wrap" }}>
+                      {msg.reactions.map((reaction, index) => (
+                        <span
+                          key={index}
+                          style={{ fontSize: "1rem", backgroundColor: "#f0f0f0", padding: "2px 6px", borderRadius: "10px" }}
+                        >
+                          {reaction.emoji} {reaction.users.length}
+                        </span>
+                      ))}
                     </div>
+                  )}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                  <div className="telegram-message-time text-muted small ms-2" style={{ marginBottom: "2px" }}>
+                    {new Date(msg.createdAt).toLocaleTimeString()}
+                    <span className={msg.isRead ? "is-read" : ""} style={{ marginLeft: "4px" }}>
+                      {msg.isRead ? "✓✓" : "✓"}
+                    </span>
+                  </div>
+                  {msg.senderId === currentUserId && !msg.isEditing && (
                     <div>
                       <Button
                         variant="link"
@@ -264,7 +314,31 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
                         Удалить
                       </Button>
                     </div>
-                  </div>
+                  )}
+                  <Button
+                    variant="link"
+                    size="sm"
+                    onClick={() => setShowReactionPicker(msg._id)}
+                    style={{ padding: "0 5px", color: "#28a745" }}
+                  >
+                    Реакция
+                  </Button>
+                </div>
+                {showReactionPicker === msg._id && (
+                  <ReactionPicker
+                    onSelect={(emoji) => handleAddReaction(msg._id, emoji)}
+                    style={{
+                      position: "absolute",
+                      bottom: "100%",
+                      left: msg.senderId === currentUserId ? "auto" : 0,
+                      right: msg.senderId === currentUserId ? 0 : "auto",
+                      zIndex: 1000,
+                      backgroundColor: "#fff",
+                      border: "1px solid #ddd",
+                      borderRadius: "5px",
+                      padding: "5px",
+                    }}
+                  />
                 )}
               </>
             )}
@@ -280,12 +354,7 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
             placeholder="Введите сообщение..."
             className="telegram-input flex-grow-1 me-2"
             disabled={submitting}
-            style={{
-              borderRadius: "20px",
-              border: "1px solid #ced4da",
-              padding: "8px 12px",
-              fontSize: "14px",
-            }}
+            style={{ borderRadius: "20px", border: "1px solid #ced4da", padding: "8px 12px", fontSize: "14px" }}
           />
           <Button
             type="submit"
@@ -317,8 +386,6 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
           </Button>
         </div>
       </Form>
-
-      {/* Модальное окно подтверждения удаления */}
       <Modal show={!!showDeleteConfirm} onHide={() => setShowDeleteConfirm(null)}>
         <Modal.Header closeButton>
           <Modal.Title>Подтверждение удаления</Modal.Title>
@@ -345,8 +412,8 @@ export default function ChatPage() {
   const { userId, isInitialized, username } = useAuth();
   const router = useRouter();
   const params = useParams();
-  const chatId = Array.isArray(params.id) ? params.id[0] : params.id; // Приводим к string | undefined
-  const selectedChatUserId: string | null = chatId || null; // Явно приводим к string | null
+  const chatId = Array.isArray(params.id) ? params.id[0] : params.id;
+  const selectedChatUserId: string | null = chatId || null;
   const [chats, setChats] = useState<Chat[]>([]);
   const [search, setSearch] = useState("");
   const [isDesktop, setIsDesktop] = useState(true);
@@ -470,12 +537,7 @@ export default function ChatPage() {
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Поиск @username"
                 className="telegram-search"
-                style={{
-                  borderRadius: "20px",
-                  border: "1px solid #ced4da",
-                  padding: "8px 12px",
-                  fontSize: "14px",
-                }}
+                style={{ borderRadius: "20px", border: "1px solid #ced4da", padding: "8px 12px", fontSize: "14px" }}
               />
             </Form.Group>
             <ListGroup className="telegram-chat-list-group">
@@ -491,11 +553,7 @@ export default function ChatPage() {
                     action
                     active={selectedChatUserId === chat.user._id}
                     className="telegram-chat-item"
-                    style={{
-                      borderRadius: "8px",
-                      marginBottom: "4px",
-                      transition: "background-color 0.3s ease",
-                    }}
+                    style={{ borderRadius: "8px", marginBottom: "4px", transition: "background-color 0.3s ease" }}
                     onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#e9ecef")}
                     onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = selectedChatUserId === chat.user._id ? "#e9ecef" : "#fff")}
                   >
@@ -534,9 +592,7 @@ export default function ChatPage() {
                             onLoad={() => console.log(`Аватар для ${chat.user.username} загружен: ${chat.user.avatar}`)}
                           />
                         ) : (
-                          <span style={{ fontSize: "18px", color: "#666" }}>
-                            {chat.user.username[0].toUpperCase()}
-                          </span>
+                          <span style={{ fontSize: "18px", color: "#666" }}>{chat.user.username[0].toUpperCase()}</span>
                         )}
                       </div>
                       <div>
