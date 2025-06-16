@@ -1,6 +1,7 @@
+// Обновлённый эндпоинт /app/api/messages/route.ts
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongodb";
-import Message from "../../../models/Message";
+import Message from "@/models/Message";
 import { Types } from "mongoose";
 
 export async function GET(request: Request) {
@@ -28,7 +29,6 @@ export async function GET(request: Request) {
 
     console.log("GET /api/messages: Найдены сообщения:", messages.length);
 
-    // Обновляем isRead и readBy для входящих сообщений
     await Message.updateMany(
       { senderId: recipientId, recipientId: userId, isRead: false },
       { $set: { isRead: true }, $addToSet: { readBy: userId } }
@@ -49,21 +49,25 @@ export async function POST(request: Request) {
   try {
     await dbConnect();
     const userId = request.headers.get("x-user-id");
-    const { recipientId, content } = await request.json();
+    const { recipientId, content, replyTo } = await request.json();
 
     if (!userId || !recipientId || !content) {
       return NextResponse.json({ error: "Требуется userId, recipientId и content" }, { status: 400 });
     }
 
-    console.log("POST /api/messages: Параметры:", { userId, recipientId, content });
+    console.log("POST /api/messages: Параметры:", { userId, recipientId, content, replyTo });
 
-    const message = await Message.create({
+    const messageData = {
       senderId: userId,
       recipientId,
       content,
       isRead: false,
       readBy: [],
-    });
+      reactions: [],
+      replyTo: replyTo ? new Types.ObjectId(replyTo) : null, // Преобразуем replyTo в ObjectId, если указано
+    };
+
+    const message = await Message.create(messageData);
 
     console.log("POST /api/messages: Сообщение создано:", message);
     console.timeEnd("POST /api/messages: Total");
@@ -95,7 +99,6 @@ export async function PUT(request: Request) {
     }
 
     message.content = content;
-    // Опционально: добавляем поле editedAt
     message.editedAt = new Date();
     await message.save();
 

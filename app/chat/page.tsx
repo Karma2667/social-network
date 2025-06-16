@@ -29,6 +29,7 @@ interface Message {
   readBy: string[];
   isEditing?: boolean;
   reactions?: { emoji: string; users: string[] }[];
+  replyTo?: string; // Добавляем поле для ссылки на исходное сообщение
 }
 
 interface Chat {
@@ -51,6 +52,7 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
   const [editContent, setEditContent] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
+  const [replyTo, setReplyTo] = useState<string | null>(null); // Состояние для отслеживания ответа
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const fetchMessages = useCallback(async (retryCount = 3) => {
@@ -100,13 +102,18 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
           "x-user-id": currentUserId,
           "Authorization": `Bearer ${localStorage.getItem("authToken") || ""}`,
         },
-        body: JSON.stringify({ recipientId: chatUserId, content: message }),
+        body: JSON.stringify({
+          recipientId: chatUserId,
+          content: message,
+          replyTo: replyTo, // Передаём идентификатор исходного сообщения
+        }),
       });
       console.log("ChatArea: Ответ /api/messages:", res.status, res.statusText);
       if (!res.ok) throw new Error("Ошибка отправки сообщения");
       const newMessage = await res.json();
       setMessages((prev) => [...prev, newMessage]);
       setMessage("");
+      setReplyTo(null); // Сбрасываем ответ после отправки
     } catch (err: any) {
       console.error("ChatArea: Ошибка отправки:", err.message);
       setError("Не удалось отправить сообщение.");
@@ -268,6 +275,11 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
                     position: "relative",
                   }}
                 >
+                  {msg.replyTo && (
+                    <div style={{ fontSize: "0.9rem", color: "#666", marginBottom: "5px", borderLeft: "2px solid #ccc", paddingLeft: "5px" }}>
+                      Ответ на: {messages.find(m => m._id === msg.replyTo)?.content || "Сообщение удалено"}
+                    </div>
+                  )}
                   {msg.content}
                   {msg.reactions && msg.reactions.length > 0 && (
                     <div style={{ marginTop: "5px", display: "flex", gap: "5px", flexWrap: "wrap" }}>
@@ -323,6 +335,14 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
                   >
                     Реакция
                   </Button>
+                  <Button
+                    variant="link"
+                    size="sm"
+                    onClick={() => setReplyTo(msg._id)}
+                    style={{ padding: "0 5px", color: "#17a2b8" }}
+                  >
+                    Ответить
+                  </Button>
                 </div>
                 {showReactionPicker === msg._id && (
                   <ReactionPicker
@@ -348,6 +368,19 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
       </div>
       <Form onSubmit={handleSendMessage} className="telegram-input-area mt-3">
         <div className="d-flex align-items-center">
+          {replyTo && (
+            <div style={{ fontSize: "0.9rem", color: "#666", marginRight: "10px", borderLeft: "2px solid #ccc", paddingLeft: "5px" }}>
+              Ответ на: {messages.find(m => m._id === replyTo)?.content || "Сообщение удалено"}
+              <Button
+                variant="link"
+                size="sm"
+                onClick={() => setReplyTo(null)}
+                style={{ padding: "0 5px", color: "#dc3545", fontSize: "0.8rem" }}
+              >
+                Отменить
+              </Button>
+            </div>
+          )}
           <FormControl
             value={message}
             onChange={(e) => setMessage(e.target.value)}

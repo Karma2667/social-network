@@ -15,7 +15,8 @@ interface IMessage extends Document {
   isRead: boolean;
   readBy: string[];
   editedAt?: Date;
-  reactions?: Reaction[]; // Добавляем поле для реакций
+  reactions?: Reaction[]; // Поле для реакций
+  replyTo?: string; // Добавляем поле для ссылки на исходное сообщение
   __v?: number;
 }
 
@@ -29,7 +30,8 @@ export interface LeanMessage {
   isRead: boolean;
   readBy: string[];
   editedAt?: Date;
-  reactions?: Reaction[]; // Добавляем в lean-версию
+  reactions?: Reaction[]; // Поле для реакций
+  replyTo?: string; // Добавляем в lean-версию
   __v?: number;
 }
 
@@ -42,6 +44,7 @@ const MessageSchema = new Schema<IMessage>({
   readBy: [{ type: String }],
   editedAt: { type: Date },
   reactions: [{ emoji: String, users: [{ type: String }] }], // Массив реакций
+  replyTo: { type: String, ref: "Message", default: null }, // Ссылка на сообщение, на которое отвечают
 });
 
 export default mongoose.models.Message || mongoose.model<IMessage>("Message", MessageSchema);
