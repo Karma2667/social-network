@@ -3,26 +3,30 @@ import { Types } from "mongoose";
 import dbConnect from "@/lib/mongodb";
 import Message, { LeanMessage } from "@/models/Message";
 import User, { LeanUser } from "@/models/User";
+import Chat, { IChat } from "@/models/Chat";
 
 interface RawUser {
   _id: Types.ObjectId | string;
   username: string;
   name?: string;
   interests?: string[];
+  avatar?: string; // Добавляем поле avatar для User
 }
 
-interface Chat {
+interface ChatData {
   user: {
     _id: string;
     username: string;
     name: string;
     interests?: string[];
+    avatar?: string; // Добавляем avatar в user
   };
   lastMessage: {
     _id: string;
     content: string;
     createdAt: Date;
   } | null;
+  avatar?: string; // Сохраняем для обратной совместимости, если нужно
 }
 
 export async function GET(request: Request) {
@@ -43,6 +47,7 @@ export async function GET(request: Request) {
 
     console.log("GET /api/chats: Parameters:", { userId, search });
 
+    // Получаем все сообщения для пользователя
     const messages = await Message.find({
       $or: [
         { senderId: userId },
@@ -52,8 +57,9 @@ export async function GET(request: Request) {
       .sort({ createdAt: -1 })
       .lean() as LeanMessage[];
 
-    console.log("GET /api/chats: Messages found:", messages.length, messages);
+    console.log("GET /api/chats: Messages found:", messages.length);
 
+    // Извлекаем уникальные ID пользователей для чатов
     const chatUserIds = Array.from(
       new Set(
         messages
@@ -66,36 +72,46 @@ export async function GET(request: Request) {
 
     console.log("GET /api/chats: Chat user IDs found:", chatUserIds);
 
+    // Получаем пользователей с фильтром по поиску, включая avatar
     const rawUsers = await User.find({
       _id: { $in: chatUserIds.map((id) => new Types.ObjectId(id)) },
       username: { $regex: search, $options: "i" },
     })
-      .select("_id username name interests")
+      .select("_id username name interests avatar") // Добавляем avatar
       .lean() as unknown as RawUser[];
 
-    console.log("GET /api/chats: Raw users found:", rawUsers);
+    console.log("GET /api/chats: Raw users found:", rawUsers.length);
 
     const users: LeanUser[] = rawUsers.map((user) => ({
       _id: user._id.toString(),
       username: user.username,
       name: user.name || "",
       interests: user.interests || [],
+      avatar: user.avatar || "", // Сохраняем avatar из профиля, даже если пустой
     }));
 
-    console.log("GET /api/chats: Users found:", users);
+    console.log("GET /api/chats: Users found:", users.length);
 
-    const chats: Chat[] = users.map((user) => {
+    // Формируем чаты, используя avatar из User, а затем из Chat как резерв
+    const chats: ChatData[] = await Promise.all(users.map(async (user) => {
       const lastMessage = messages.find(
         (msg) =>
           (msg.senderId.toString() === userId && msg.recipientId.toString() === user._id.toString()) ||
           (msg.senderId.toString() === user._id.toString() && msg.recipientId.toString() === userId)
       );
+
+      // Поиск чата для получения дополнительного аватара (если есть)
+      const chat = await Chat.findOne({
+        members: { $all: [userId, user._id.toString()] },
+      }).select("avatar").lean() as IChat | null;
+
       return {
         user: {
           _id: user._id.toString(),
           username: user.username,
           name: user.name || "",
           interests: user.interests || [],
+          avatar: user.avatar || chat?.avatar || "/default-chat-avatar.png", // Приоритет: User.avatar > Chat.avatar > default
         },
         lastMessage: lastMessage
           ? {
@@ -105,7 +121,7 @@ export async function GET(request: Request) {
             }
           : null,
       };
-    });
+    }));
 
     console.log("GET /api/chats: Chats formed:", chats);
     console.timeEnd("GET /api/chats: Total");

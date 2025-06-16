@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/app/lib/AuthContext";
 import { useRouter, useParams } from "next/navigation";
-import { Container, Row, Col, Form, ListGroup, Button, FormControl, Alert } from "react-bootstrap";
+import { Container, Row, Col, Form, ListGroup, Button, FormControl, Alert, Image } from "react-bootstrap";
 import Link from "next/link";
 import Chat from "@/app/Components/Chat";
 
@@ -22,8 +22,11 @@ interface Chat {
     _id: string;
     username: string;
     name?: string;
+    interests?: string[];
+    avatar?: string; // Добавляем поле avatar в интерфейс
   };
   lastMessage?: Message;
+  avatar?: string; // Уберем фиксированный дефолт, будем брать из user.avatar
 }
 
 function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; currentUserId: string }) {
@@ -101,9 +104,9 @@ function ChatArea({ chatUserId, currentUserId }: { chatUserId: string | null; cu
   }
 
   return (
-    <div className="telegram-chat-container p-3" style={{ height: "calc(100vh - 56px)", display: "flex", flexDirection: "column", backgroundColor: "#f0f2f5" }}>
+    <div className="telegram-chat-container p-3" style={{ height: "100%", display: "flex", flexDirection: "column", backgroundColor: "#f0f2f5" }}>
       {error && <Alert variant="danger" className="telegram-alert">{error}</Alert>}
-      <div className="telegram-messages" style={{ flex: 1, overflowY: "auto", maxHeight: "calc(100vh - 200px)" }}>
+      <div className="telegram-messages" style={{ flex: 1, overflowY: "auto", maxHeight: "calc(100% - 80px)" }}>
         {messages.map((msg) => (
           <div
             key={msg._id}
@@ -200,6 +203,8 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const fetchChatsRef = useRef(false);
   const lastFetchTime = useRef(0);
+  const [isServerDown, setIsServerDown] = useState(false); // Флаг состояния сервера
+  const [avatarLoadAttempts, setAvatarLoadAttempts] = useState<{ [key: string]: number }>({}); // Ограничение попыток загрузки аватаров
 
   console.log(
     "ChatPage: Инициализация, userId:",
@@ -224,7 +229,7 @@ export default function ChatPage() {
   }, []);
 
   const fetchChats = useCallback(async (retryCount = 3) => {
-    if (!userId || !isInitialized || fetchChatsRef.current) return;
+    if (!userId || !isInitialized || fetchChatsRef.current || isServerDown) return;
     const now = Date.now();
     if (now - lastFetchTime.current < 1000) return; // Debounce 1 second
     fetchChatsRef.current = true;
@@ -240,11 +245,24 @@ export default function ChatPage() {
       });
       if (!res.ok) throw new Error(`HTTP ошибка ${res.status}: ${res.statusText}`);
       const data = await res.json();
-      console.log("ChatPage: Чаты загружены:", data);
-      setChats(data);
+      // Обновляем chats, используя avatar из user.avatar
+      const updatedChats = data.map((chat: any) => ({
+        user: {
+          ...chat.user,
+          avatar: chat.user.avatar || "/default-chat-avatar.png", // Фallback на дефолт, если avatar отсутствует
+        },
+        lastMessage: chat.lastMessage,
+      }));
+      console.log("ChatPage: Чаты загружены с данными:", JSON.stringify(updatedChats, null, 2));
+      setChats(updatedChats);
       setError(null);
+      setIsServerDown(false); // Сброс флага при успешном запросе
     } catch (err: any) {
       console.error("ChatPage: Ошибка загрузки чатов:", err.message);
+      if (err.message.includes("NetworkError")) {
+        setIsServerDown(true);
+        setError("Сервер недоступен. Проверьте подключение.");
+      }
       if (retryCount > 0) {
         console.log(`ChatPage: Повторная попытка (${retryCount} осталось)`);
         setTimeout(() => {
@@ -252,12 +270,12 @@ export default function ChatPage() {
           fetchChats(retryCount - 1);
         }, 1000);
       } else {
-        setError("Не удалось загрузить чаты. Проверьте подключение к сети.");
+        setError("Не удалось загрузить чаты после нескольких попыток.");
       }
     } finally {
       fetchChatsRef.current = false;
     }
-  }, [userId, isInitialized, search]);
+  }, [userId, isInitialized, search, isServerDown]);
 
   useEffect(() => {
     if (!isInitialized) {
@@ -271,10 +289,10 @@ export default function ChatPage() {
     }
     fetchChats();
     const intervalId = setInterval(() => {
-      if (!fetchChatsRef.current) fetchChats();
+      if (!fetchChatsRef.current && !isServerDown) fetchChats(); // Останавливаем при проблемах с сервером
     }, 5000); // Обновление каждые 5 сек
     return () => clearInterval(intervalId);
-  }, [userId, isInitialized, router, fetchChats]);
+  }, [userId, isInitialized, router, fetchChats, isServerDown]);
 
   if (!isInitialized) {
     console.log("ChatPage: Ожидание инициализации");
@@ -291,10 +309,10 @@ export default function ChatPage() {
   }
 
   return (
-    <Container fluid className="telegram-chat-page mt-3" style={{ backgroundColor: "#f0f2f5", minHeight: "100vh" }}>
+    <Container fluid className="telegram-chat-page" style={{ backgroundColor: "#f0f2f5", height: "100vh", overflow: "hidden", position: "relative", minHeight: "100vh" }}>
       {error && <Alert variant="danger" className="telegram-alert">{error}</Alert>}
-      <Row>
-        <Col md={4} className="border-end telegram-chat-list" style={{ backgroundColor: "#fff", height: "calc(100vh - 56px)" }}>
+      <Row style={{ height: "100%", overflow: "hidden" }}>
+        <Col md={4} className="border-end telegram-chat-list" style={{ backgroundColor: "#fff", height: "100%", overflowY: "auto" }}>
           <div className="p-3">
             <Form.Group className="mb-3">
               <FormControl
@@ -312,51 +330,79 @@ export default function ChatPage() {
               />
             </Form.Group>
             <ListGroup className="telegram-chat-list-group">
-              {chats.length === 0 && <ListGroup.Item className="telegram-placeholder">Нет чатов</ListGroup.Item>}
-              {chats.map((chat) => (
-                <ListGroup.Item
-                  key={chat.user._id}
-                  as={Link}
-                  href={`/chat/${chat.user._id}`} // Динамический маршрут
-                  action
-                  active={selectedChatUserId === chat.user._id}
-                  className="telegram-chat-item"
-                  style={{
-                    borderRadius: "8px",
-                    marginBottom: "4px",
-                    transition: "background-color 0.3s ease",
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#e9ecef")}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = selectedChatUserId === chat.user._id ? "#e9ecef" : "#fff")}
-                >
-                  <div className="d-flex align-items-center">
-                    <div
-                      className="telegram-avatar me-2"
-                      style={{
-                        width: "40px",
-                        height: "40px",
-                        backgroundColor: "#ddd",
-                        borderRadius: "50%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      {/* Замените на реальный аватар */}
-                      {chat.user.username[0].toUpperCase()}
+              {chats.length === 0 && !error && <ListGroup.Item className="telegram-placeholder">Нет чатов</ListGroup.Item>}
+              {chats.map((chat) => {
+                const username = chat.user.username;
+                const attempts = avatarLoadAttempts[username] || 0;
+                return (
+                  <ListGroup.Item
+                    key={chat.user._id}
+                    as={Link}
+                    href={`/chat/${chat.user._id}`} // Динамический маршрут
+                    action
+                    active={selectedChatUserId === chat.user._id}
+                    className="telegram-chat-item"
+                    style={{
+                      borderRadius: "8px",
+                      marginBottom: "4px",
+                      transition: "background-color 0.3s ease",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#e9ecef")}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = selectedChatUserId === chat.user._id ? "#e9ecef" : "#fff")}
+                  >
+                    <div className="d-flex align-items-center">
+                      <div
+                        className="telegram-avatar me-2"
+                        style={{
+                          width: "40px",
+                          height: "40px",
+                          borderRadius: "50%",
+                          overflow: "hidden",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: chat.user.avatar ? "transparent" : "#ddd",
+                        }}
+                      >
+                        {chat.user.avatar && attempts < 3 ? (
+                          <Image
+                            src={chat.user.avatar.startsWith("http") ? chat.user.avatar : `http://localhost:3000${chat.user.avatar}`}
+                            alt={`${chat.user.username}'s chat avatar`}
+                            fluid
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                            onError={(e) => {
+                              console.log(`Ошибка загрузки аватара чата для ${chat.user.username}: ${chat.user.avatar}`);
+                              setAvatarLoadAttempts((prev) => ({
+                                ...prev,
+                                [username]: (prev[username] || 0) + 1,
+                              }));
+                              if (attempts < 2) {
+                                (e.target as HTMLImageElement).src = "/default-chat-avatar.png"; // Фallback на дефолт
+                              } else {
+                                (e.target as HTMLImageElement).src = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=="; // Пустая заглушка
+                              }
+                            }}
+                            onLoad={() => console.log(`Аватар для ${chat.user.username} загружен: ${chat.user.avatar}`)}
+                          />
+                        ) : (
+                          <span style={{ fontSize: "18px", color: "#666" }}>
+                            {chat.user.username[0].toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <div>
+                        @{chat.user.username} {chat.user.name && `(${chat.user.name})`}
+                        <div className="small text-muted">{chat.lastMessage?.content || "Нет сообщений"}</div>
+                      </div>
                     </div>
-                    <div>
-                      @{chat.user.username} {chat.user.name && `(${chat.user.name})`}
-                      <div className="small text-muted">{chat.lastMessage?.content || "Нет сообщений"}</div>
-                    </div>
-                  </div>
-                </ListGroup.Item>
-              ))}
+                  </ListGroup.Item>
+                );
+              })}
             </ListGroup>
           </div>
         </Col>
         {isDesktop && (
-          <Col md={8}>
+          <Col md={8} style={{ height: "100%", overflowY: "auto" }}>
             <ChatArea chatUserId={selectedChatUserId} currentUserId={userId} />
           </Col>
         )}
