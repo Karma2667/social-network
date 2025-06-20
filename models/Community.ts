@@ -1,4 +1,3 @@
-// app/models/Community.ts
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface CommunityDocument extends Document {

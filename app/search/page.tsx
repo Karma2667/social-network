@@ -1,9 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/app/lib/AuthContext';
-import { useRouter } from 'next/navigation';
 import { Form, FormControl, Button, Card, Container, Row, Col } from 'react-bootstrap';
 import Link from 'next/link';
 
@@ -42,7 +41,8 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!isInitialized || !user) {
+    if (!isInitialized) return;
+    if (!user) {
       router.replace('/login');
       return;
     }
@@ -57,66 +57,61 @@ export default function SearchPage() {
       setError(null);
       return;
     }
-    setLoading(true);
-    setError(null);
-    try {
-      const authToken = localStorage.getItem('authToken') || '';
-      const res = await fetch(`/api/search?query=${encodeURIComponent(query)}`, {
-        headers: {
-          'x-user-id': user?.userId || '',
-          'Authorization': `Bearer ${authToken}`,
-        },
-        cache: 'no-store',
-      });
-      if (!res.ok) {
-        throw new Error(`Ошибка поиска: ${res.status} - ${res.statusText}`);
+
+    const debouncedSearch = setTimeout(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const authToken = localStorage.getItem('authToken') || '';
+        const res = await fetch(`/api/search?query=${encodeURIComponent(query)}`, {
+          headers: {
+            'x-user-id': user?.userId || '',
+            'Authorization': `Bearer ${authToken}`,
+          },
+          cache: 'no-store',
+        });
+        if (!res.ok) throw new Error(`Ошибка поиска: ${res.status} - ${res.statusText}`);
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error('Неверный тип содержимого ответа');
+        }
+        const results = await res.json();
+        if (!Array.isArray(results)) throw new Error('Неверный формат данных');
+        setSearchResults(results);
+      } catch (err: any) {
+        console.error('SearchPage: Ошибка при выполнении поиска:', err);
+        setError(err.message || 'Ошибка поиска пользователей или сообществ');
+        setSearchResults([]);
+      } finally {
+        setLoading(false);
       }
-      const contentType = res.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        throw new Error('Неверный тип содержимого ответа');
-      }
-      const results = await res.json();
-      if (!Array.isArray(results)) {
-        throw new Error('Неверный формат данных');
-      }
-      setSearchResults(results);
-    } catch (err: any) {
-      console.error('SearchPage: Ошибка при выполнении поиска:', err);
-      setError(err.message || 'Ошибка поиска пользователей или сообществ');
-      setSearchResults([]);
-    } finally {
-      setLoading(false);
-    }
+    }, 300); // Дебаунс 300ms
+
+    return () => clearTimeout(debouncedSearch);
   };
 
-  const truncateBio = (bio: string, maxLength: number) => {
-    if (bio.length <= maxLength) return bio;
-    return bio.substring(0, maxLength) + '...';
+  const truncateText = (text: string, maxLength: number) => {
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + '...';
   };
 
-  if (!isInitialized || !user) {
-    return <div>Загрузка...</div>;
-  }
+  if (!isInitialized) return <div>Загрузка...</div>;
 
   return (
-    <Container className="telegram-search-page mt-4">
-      <h2 className="telegram-search-title">Поиск пользователей и сообществ</h2>
+    <Container className="mt-4">
+      <h2>Поиск пользователей и сообществ</h2>
       <Form className="d-flex mb-4" onSubmit={(e) => { e.preventDefault(); handleSearch(searchQuery); }}>
         <FormControl
           type="text"
           placeholder="Поиск (#игры, @test5, test5)"
-          className="me-2 telegram-search-input"
+          className="me-2"
           value={searchQuery}
-          onChange={(e) => {
-            setSearchQuery(e.target.value);
-            handleSearch(e.target.value);
-          }}
+          onChange={(e) => setSearchQuery(e.target.value)}
         />
         <Button
           variant="primary"
           onClick={() => handleSearch(searchQuery)}
           disabled={loading}
-          className="telegram-search-button"
         >
           {loading ? 'Поиск...' : 'Найти'}
         </Button>
@@ -128,117 +123,81 @@ export default function SearchPage() {
           {searchResults.map((result) =>
             result.type === 'user' ? (
               <Col key={result._id} xs={12} md={6} lg={4} className="mb-4">
-                <Card className="telegram-user-card">
+                <Card>
                   <Card.Body>
                     <div className="d-flex align-items-center mb-3">
                       {result.avatar ? (
-                        <img
-                          src={result.avatar}
-                          alt={result.username}
-                          className="telegram-user-card-avatar"
-                        />
+                        <img src={result.avatar} alt={result.username} style={{ width: '50px', height: '50px', borderRadius: '50%', objectFit: 'cover' }} />
                       ) : (
-                        <div className="telegram-user-card-avatar bg-secondary rounded-circle d-flex align-items-center justify-content-center">
+                        <div style={{ width: '50px', height: '50px', background: '#ccc', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           <span>{result.username[0].toUpperCase()}</span>
                         </div>
                       )}
                       <div className="ms-3">
-                        <Card.Title as={Link} href={`/profile/${result._id}`} className="telegram-user-card-username">
+                        <Card.Title as={Link} href={`/profile/${result._id}`} style={{ color: '#000', textDecoration: 'none' }}>
                           @{result.username}
                         </Card.Title>
-                        {result.name && (
-                          <Card.Subtitle className="text-muted telegram-user-card-name">
-                            {result.name}
-                          </Card.Subtitle>
-                        )}
+                        {result.name && <Card.Subtitle className="text-muted">{result.name}</Card.Subtitle>}
                       </div>
                     </div>
-                    {result.bio ? (
-                      <Card.Text className="telegram-user-card-bio">
-                        {truncateBio(result.bio, 100)}
-                      </Card.Text>
-                    ) : (
-                      <Card.Text className="telegram-user-card-bio text-muted">
-                        Нет описания
+                    {result.bio && (
+                      <Card.Text>
+                        {truncateText(result.bio, 100)}
                       </Card.Text>
                     )}
-                    <div className="telegram-user-card-interests mb-3">
-                      {result.interests?.length > 0 ? (
-                        result.interests.map((interest: string, index: number) => (
-                          <span key={index} className="telegram-user-card-interest">
-                            {interest}
-                          </span>
+                    <div>
+                      {result.interests.length > 0 ? (
+                        result.interests.map((interest, index) => (
+                          <span key={index} className="badge bg-secondary me-1">{interest}</span>
                         ))
                       ) : (
-                        <span className="telegram-user-card-no-interests">
-                          Нет интересов
-                        </span>
+                        <span className="text-muted">Нет интересов</span>
                       )}
                     </div>
-                    <div className="d-flex gap-2">
-                      <Link href={`/chat/${result._id}`} className="telegram-user-card-button telegram-user-card-button-primary">
-                        Написать
-                      </Link>
-                      <Link href={`/profile/${result._id}`} className="telegram-user-card-button telegram-user-card-button-secondary">
-                        Профиль
-                      </Link>
+                    <div className="mt-2">
+                      <Link href={`/chat/${result._id}`} className="btn btn-primary btn-sm me-2">Написать</Link>
+                      <Link href={`/profile/${result._id}`} className="btn btn-outline-primary btn-sm">Профиль</Link>
                     </div>
                   </Card.Body>
                 </Card>
               </Col>
             ) : result.type === 'community' ? (
               <Col key={result._id} xs={12} md={6} lg={4} className="mb-4">
-                <Card className="telegram-user-card">
+                <Card>
                   <Card.Body>
                     <div className="d-flex align-items-center mb-3">
                       {result.avatar ? (
-                        <img
-                          src={result.avatar}
-                          alt={result.name}
-                          className="telegram-user-card-avatar"
-                        />
+                        <img src={result.avatar} alt={result.name} style={{ width: '50px', height: '50px', borderRadius: '50%', objectFit: 'cover' }} />
                       ) : (
-                        <div className="telegram-user-card-avatar bg-secondary rounded-circle d-flex align-items-center justify-content-center">
+                        <div style={{ width: '50px', height: '50px', background: '#ccc', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           <span>{result.name[0].toUpperCase()}</span>
                         </div>
                       )}
                       <div className="ms-3">
-                        <Card.Title as={Link} href={`/communities/${result._id}`} className="telegram-user-card-username">
+                        <Card.Title as={Link} href={`/communities/${result._id}`} style={{ color: '#000', textDecoration: 'none' }}>
                           {result.name}
                         </Card.Title>
                         {result.creator?.username && (
-                          <Card.Subtitle className="text-muted telegram-user-card-name">
-                            Создатель: {result.creator.username}
-                          </Card.Subtitle>
+                          <Card.Subtitle className="text-muted">Создатель: {result.creator.username}</Card.Subtitle>
                         )}
                       </div>
                     </div>
-                    {result.description ? (
-                      <Card.Text className="telegram-user-card-bio">
-                        {truncateBio(result.description, 100)}
-                      </Card.Text>
-                    ) : (
-                      <Card.Text className="telegram-user-card-bio text-muted">
-                        Нет описания
+                    {result.description && (
+                      <Card.Text>
+                        {truncateText(result.description, 100)}
                       </Card.Text>
                     )}
-                    <div className="telegram-user-card-interests mb-3">
-                      {result.interests?.length > 0 ? (
-                        result.interests.map((interest: string, index: number) => (
-                          <span key={index} className="telegram-user-card-interest">
-                            {interest}
-                          </span>
+                    <div>
+                      {result.interests.length > 0 ? (
+                        result.interests.map((interest, index) => (
+                          <span key={index} className="badge bg-secondary me-1">{interest}</span>
                         ))
                       ) : (
-                        <span className="telegram-user-card-no-interests">
-                          Нет интересов
-                        </span>
+                        <span className="text-muted">Нет интересов</span>
                       )}
                     </div>
-                    <div className="d-flex gap-2">
-                      <Link href={`/communities/${result._id}`} className="telegram-user-card-button telegram-user-card-button-primary">
-                        Перейти
-                      </Link>
+                    <div className="mt-2">
+                      <Link href={`/communities/${result._id}`} className="btn btn-primary btn-sm">Перейти</Link>
                     </div>
                   </Card.Body>
                 </Card>
@@ -246,9 +205,9 @@ export default function SearchPage() {
             ) : null
           )}
         </Row>
-      ) : (
-        <p className="text-muted telegram-search-no-results">Нет результатов</p>
-      )}
+      ) : !loading && !error ? (
+        <p className="text-muted">Нет результатов</p>
+      ) : null}
     </Container>
   );
 }

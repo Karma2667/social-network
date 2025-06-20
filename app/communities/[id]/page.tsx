@@ -26,12 +26,12 @@ import Post from '@/app/Components/Post';
 interface CommunityData {
   _id: string;
   name: string;
-  description: string;
+  description?: string;
   interests: string[];
   avatar: string;
   creator: { _id: string; username: string } | null;
   members: { _id: string; username: string }[];
-  admins: ({ _id: string; username: string } | string)[];
+  admins: { _id: string; username: string }[];
 }
 
 interface CommunityListItem {
@@ -96,7 +96,6 @@ export default function CommunityPage() {
   const [communities, setCommunities] = useState<CommunityListItem[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
-
   const [postContent, setPostContent] = useState('');
   const [postImages, setPostImages] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -106,21 +105,42 @@ export default function CommunityPage() {
       setError('Пользователь или ID сообщества не инициализированы');
       return;
     }
+    setLoading(true);
     try {
       const res = await fetch(`/api/communities/${id}`, {
         headers: { 'x-user-id': user.userId },
       });
-      if (!res.ok) throw new Error('Не удалось загрузить сообщество');
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(errorText || 'Не удалось загрузить сообщество');
+      }
       const data = await res.json();
-      console.log('CommunityPage: Полученные данные сообщества:', data);
-      setCommunity(data); // Обновляем состояние напрямую
-      setNewName(data.name);
-      setNewDescription(data.description || '');
-      setNewInterests(data.interests.join(', '));
-      setNewAvatar(data.avatar || '');
+      console.log('Полученные данные сообщества:', data);
+      if (data && data._id) {
+        const updatedCommunity: CommunityData = {
+          _id: data._id,
+          name: data.name || '',
+          description: data.description || '',
+          interests: Array.isArray(data.interests) ? data.interests : [],
+          avatar: data.avatar || '',
+          creator: data.creator ? { _id: data.creator._id, username: data.creator.username } : null,
+          members: Array.isArray(data.members) ? data.members.map((m: any) => ({ _id: m._id, username: m.username })) : [],
+          admins: Array.isArray(data.admins) ? data.admins.map((a: any) => ({ _id: a._id, username: a.username })) : [],
+        };
+        setCommunity(updatedCommunity);
+        setNewName(updatedCommunity.name);
+        setNewDescription(updatedCommunity.description || '');
+        setNewInterests(updatedCommunity.interests.join(', '));
+        setNewAvatar(updatedCommunity.avatar);
+      } else {
+        throw new Error('Некорректные данные сообщества');
+      }
     } catch (err: any) {
       console.error('Ошибка загрузки сообщества:', err);
       setError(err.message || 'Ошибка загрузки сообщества');
+      setCommunity(null);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -130,7 +150,6 @@ export default function CommunityPage() {
       return;
     }
     try {
-      console.log('CommunityPage: Загрузка постов для communityId:', id);
       const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch(`/api/posts?communityId=${id}`, {
         headers: {
@@ -138,15 +157,13 @@ export default function CommunityPage() {
           'Authorization': `Bearer ${authToken}`,
         },
       });
-      console.log('CommunityPage: Ответ от API, статус:', res.status);
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
         throw new Error(errorData.error || `Ошибка загрузки постов (статус: ${res.status})`);
       }
       const data = await res.json();
-      console.log('CommunityPage: Полученные посты:', data);
       if (Array.isArray(data)) {
-        setPosts(data); // Обновляем состояние напрямую
+        setPosts(data);
       } else if (data.message === 'Посты не найдены') {
         setPosts([]);
       } else {
@@ -336,7 +353,9 @@ export default function CommunityPage() {
     }
   };
 
-  const handleCreateClick = () => router.push('/communities/create');
+  const handleCreateClick = () => {
+    router.push('/communities/create');
+  };
 
   const handlePostSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -345,7 +364,6 @@ export default function CommunityPage() {
     setError(null);
 
     try {
-      console.log('CommunityPage: Отправка поста для communityId:', id);
       const authToken = localStorage.getItem('authToken') || '';
       const formData = new FormData();
       formData.append('content', postContent);
@@ -362,7 +380,6 @@ export default function CommunityPage() {
         body: formData,
       });
 
-      console.log('CommunityPage: Ответ от API при создании поста, статус:', res.status);
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
         throw new Error(errorData.error || `Не удалось создать пост (статус: ${res.status})`);
@@ -384,7 +401,6 @@ export default function CommunityPage() {
     if (!window.confirm('Вы уверены, что хотите удалить этот пост?')) return;
 
     try {
-      console.log('CommunityPage: Удаление поста с ID:', postId);
       const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch(`/api/posts/${postId}`, {
         method: 'DELETE',
@@ -394,10 +410,9 @@ export default function CommunityPage() {
         },
       });
 
-      console.log('CommunityPage: Ответ от API при удалении поста, статус:', res.status);
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
-        throw new Error(errorData.error || `Ошибка удаления поста (статус: ${res.status})`);
+        throw new Error(errorData.error || `Ошибка удаления постов (статус: ${res.status})`);
       }
 
       await fetchPosts();
@@ -417,22 +432,28 @@ export default function CommunityPage() {
 
   useEffect(() => {
     if (isInitialized && user) {
-      setLoading(true);
-      Promise.all([fetchCommunity(), fetchPosts(), fetchFriends(), fetchCommunities()])
-        .then(() => {
+      const fetchData = async () => {
+        setLoading(true);
+        try {
+          await Promise.all([fetchCommunity(), fetchPosts(), fetchFriends(), fetchCommunities()]);
+          if (!community) {
+            console.log('Повторная попытка загрузки сообщества...');
+            await fetchCommunity(); // Повторный вызов, если данные не загрузились
+          }
           setLoading(false);
           console.log('CommunityPage: Данные загружены, community:', community, 'posts:', posts);
-        })
-        .catch((err) => {
+        } catch (err) {
           console.error('Ошибка при загрузке данных:', err);
           setError('Ошибка загрузки данных');
           setLoading(false);
-        });
+        }
+      };
+      fetchData();
     }
   }, [isInitialized, user, id]);
 
   const isAdmin = community?.admins.some((admin) => 
-    (typeof admin === 'string' ? admin : admin._id) === user?.userId
+    admin._id === user?.userId
   ) || false;
 
   const filteredCommunities = communities.filter((comm) =>
@@ -579,6 +600,29 @@ export default function CommunityPage() {
                 {community.members.length}
               </a>
             </p>
+            {user?.userId && (
+              <Button
+                variant={community.members.some((m) => m._id === user.userId) ? 'outline-danger' : 'outline-primary'}
+                onClick={async () => {
+                  const url = `/api/communities/${id}/subscribe`;
+                  const method = community.members.some((m) => m._id === user.userId) ? 'DELETE' : 'POST';
+                  const res = await fetch(url, {
+                    method,
+                    headers: { 'x-user-id': user.userId },
+                  });
+                  if (res.ok) {
+                    await fetchCommunity();
+                    await fetchPosts();
+                  } else {
+                    const error = await res.json();
+                    setError(error.error || 'Ошибка подписки/отписки');
+                  }
+                }}
+                className="mt-2"
+              >
+                {community.members.some((m) => m._id === user.userId) ? 'Отписаться' : 'Подписаться'}
+              </Button>
+            )}
             {isAdmin && (
               <div className="mt-3">
                 <OverlayTrigger placement="top" overlay={<Tooltip id="edit-tooltip">Редактировать сообщество</Tooltip>}>
@@ -631,9 +675,7 @@ export default function CommunityPage() {
           {community.members.length > 0 ? (
             <ul>
               {community.members.map((member) => {
-                const isModerator = community.admins.some((admin) => 
-                  (typeof admin === 'string' ? admin : admin._id) === member._id
-                );
+                const isModerator = community.admins.some((admin) => admin._id === member._id);
                 return (
                   <li key={member._id} className="d-flex justify-content-between align-items-center mb-2">
                     <span>{member.username}</span>

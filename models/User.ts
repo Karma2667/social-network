@@ -11,6 +11,7 @@ interface IUser extends Document {
   createdAt: Date;
   posts?: mongoose.Types.ObjectId[];
   following?: mongoose.Types.ObjectId[];
+  communities?: mongoose.Types.ObjectId[]; // Связь с сообществами
 }
 
 export interface LeanUser {
@@ -25,6 +26,7 @@ export interface LeanUser {
   createdAt?: Date;
   posts?: any[];
   following?: { _id: string; username: string }[];
+  communities?: string[]; // Для lean-документов
 }
 
 const UserSchema = new Schema<IUser>({
@@ -36,12 +38,16 @@ const UserSchema = new Schema<IUser>({
   interests: [{
     type: String,
     default: [],
-    validate: (v: string[]) => v.length <= 5,
+    validate: {
+      validator: (v: string[]) => v.length <= 5,
+      message: 'Интересов не может быть больше 5',
+    },
   }],
   avatar: { type: String },
   createdAt: { type: Date, default: Date.now },
   posts: [{ type: Schema.Types.ObjectId, ref: 'Post' }],
   following: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+  communities: [{ type: Schema.Types.ObjectId, ref: 'Community' }],
 });
 
 export default mongoose.models.User || mongoose.model<IUser>('User', UserSchema);

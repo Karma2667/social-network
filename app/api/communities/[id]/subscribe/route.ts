@@ -4,8 +4,9 @@ import Community from '@/models/Community';
 import User from '@/models/User';
 import mongoose from 'mongoose';
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   await dbConnect();
+  const params = await context.params;
   const { id } = params;
   const userId = request.headers.get('x-user-id');
 
@@ -28,9 +29,14 @@ export async function POST(request: Request, { params }: { params: { id: string 
       community.members.push(userId);
       user.communities.push(community._id);
       await community.save();
-      await user.save();
+      // Игнорируем валидацию interests, так как оно не изменяется
+      await user.save({ validateBeforeSave: false }); // Отключаем полную валидацию
       console.log(`POST /api/communities/${id}/subscribe: Пользователь ${userId} подписался на сообщество ${id}`);
-      return NextResponse.json({ message: 'Вы успешно подписались на сообщество' }, { status: 200 });
+      const updatedCommunity = await Community.findById(id)
+        .populate('creator', 'username')
+        .populate('members', 'username')
+        .populate('admins', 'username');
+      return NextResponse.json(updatedCommunity);
     } else {
       return NextResponse.json({ message: 'Вы уже подписаны на это сообщество' }, { status: 400 });
     }
@@ -41,8 +47,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
   }
 }
 
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
   await dbConnect();
+  const params = await context.params;
   const { id } = params;
   const userId = request.headers.get('x-user-id');
 
@@ -62,12 +69,16 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
     }
 
     if (community.members.includes(userId)) {
-      community.members = community.members.filter((member: mongoose.Types.ObjectId | string) => member.toString() !== userId);
+      community.members = community.members.filter((memberId: mongoose.Types.ObjectId | string) => memberId.toString() !== userId);
       user.communities = user.communities.filter((communityId: mongoose.Types.ObjectId) => communityId.toString() !== id);
       await community.save();
-      await user.save();
+      await user.save({ validateModifiedOnly: true }); // Валидация только измененных полей
       console.log(`DELETE /api/communities/${id}/subscribe: Пользователь ${userId} отписался от сообщества ${id}`);
-      return NextResponse.json({ message: 'Вы успешно отписались от сообщества' }, { status: 200 });
+      const updatedCommunity = await Community.findById(id)
+        .populate('creator', 'username')
+        .populate('members', 'username')
+        .populate('admins', 'username');
+      return NextResponse.json(updatedCommunity);
     } else {
       return NextResponse.json({ message: 'Вы не подписаны на это сообщество' }, { status: 400 });
     }
