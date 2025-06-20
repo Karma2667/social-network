@@ -29,8 +29,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       community.members.push(userId);
       user.communities.push(community._id);
       await community.save();
-      // Игнорируем валидацию interests, так как оно не изменяется
-      await user.save({ validateBeforeSave: false }); // Отключаем полную валидацию
+      await user.save({ validateBeforeSave: false });
       console.log(`POST /api/communities/${id}/subscribe: Пользователь ${userId} подписался на сообщество ${id}`);
       const updatedCommunity = await Community.findById(id)
         .populate('creator', 'username')
@@ -69,10 +68,14 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     }
 
     if (community.members.includes(userId)) {
+      // Проверяем, не является ли пользователь создателем
+      if (community.creator && community.creator.toString() === userId) {
+        return NextResponse.json({ error: 'Создатель сообщества не может отписаться' }, { status: 403 });
+      }
       community.members = community.members.filter((memberId: mongoose.Types.ObjectId | string) => memberId.toString() !== userId);
       user.communities = user.communities.filter((communityId: mongoose.Types.ObjectId) => communityId.toString() !== id);
       await community.save();
-      await user.save({ validateModifiedOnly: true }); // Валидация только измененных полей
+      await user.save({ validateModifiedOnly: true });
       console.log(`DELETE /api/communities/${id}/subscribe: Пользователь ${userId} отписался от сообщества ${id}`);
       const updatedCommunity = await Community.findById(id)
         .populate('creator', 'username')

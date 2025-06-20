@@ -80,7 +80,7 @@ export default function CommunityPage() {
   const { user, isInitialized } = useAuth();
   const router = useRouter();
 
-  const [community, setCommunity] = useState<CommunityData | null>(null); // Начальное состояние всегда null
+  const [community, setCommunity] = useState<CommunityData | null>(null);
   const [communities, setCommunities] = useState<CommunityListItem[]>([]);
   const [posts, setPosts] = useState<PostData[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -116,7 +116,6 @@ export default function CommunityPage() {
         throw new Error(errorText || 'Не удалось загрузить сообщество');
       }
       const data = await res.json();
-      console.log('Полученные данные сообщества:', data);
       if (data && data._id) {
         const updatedCommunity: CommunityData = {
           _id: data._id,
@@ -363,7 +362,10 @@ export default function CommunityPage() {
 
   const handlePostSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (submitting || !postContent.trim() || !user?.userId || !id) return;
+    if (submitting || !postContent.trim() || !user?.userId || !id || !isAdmin) {
+      if (!isAdmin) setError('Только администраторы могут создавать посты');
+      return;
+    }
     setSubmitting(true);
     setError(null);
 
@@ -464,6 +466,7 @@ export default function CommunityPage() {
   }, [isInitialized, user, id]);
 
   const isAdmin = !!community && community.admins.some((admin) => admin._id === user?.userId);
+  const isCreator = !!community && community.creator?._id === user?.userId;
 
   const filteredCommunities = communities.filter((comm) =>
     comm.name.toLowerCase().includes(search.toLowerCase())
@@ -525,7 +528,7 @@ export default function CommunityPage() {
                     value={postContent}
                     onChange={(e) => setPostContent(e.target.value)}
                     placeholder={`Напишите пост от лица ${community.name}...`}
-                    disabled={submitting}
+                    disabled={submitting || !isAdmin}
                     style={{ minHeight: '100px' }}
                   />
                   <div className="position-absolute top-0 end-0 mt-1 me-2 d-flex align-items-center">
@@ -533,7 +536,7 @@ export default function CommunityPage() {
                     <Button
                       variant="link"
                       onClick={() => document.getElementById('fileInput')?.click()}
-                      disabled={submitting}
+                      disabled={submitting || !isAdmin}
                       className="ms-2"
                       title="Прикрепить изображения"
                     >
@@ -547,6 +550,7 @@ export default function CommunityPage() {
                     multiple
                     onChange={handleFileSelect}
                     style={{ display: 'none' }}
+                    disabled={!isAdmin}
                   />
                   {postImages.length > 0 && (
                     <div className="mt-2">
@@ -562,7 +566,7 @@ export default function CommunityPage() {
                 <Button
                   variant="primary"
                   type="submit"
-                  disabled={submitting || !postContent.trim()}
+                  disabled={submitting || !postContent.trim() || !isAdmin}
                 >
                   {submitting ? 'Отправка...' : 'Опубликовать'}
                 </Button>
@@ -610,7 +614,7 @@ export default function CommunityPage() {
                     {community.members.length}
                   </a>
                 </p>
-                {user?.userId && (
+                {user?.userId && !isCreator && ( // Блокируем отписку для создателя
                   <Button
                     variant={community.members.some((m) => m._id === user.userId) ? 'outline-danger' : 'outline-primary'}
                     onClick={async () => {
