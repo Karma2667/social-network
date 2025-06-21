@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import connectToDB from '@/app/lib/mongoDB';
+import { connectToDB } from '@/app/lib/mongoDB'; // Исправлен импорт
 import Post from '@/models/Post';
 import Comment from '@/models/Comment';
 

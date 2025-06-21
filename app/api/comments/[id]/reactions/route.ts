@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import dbConnect from '@/app/lib/mongoDB';
+import { connectToDB } from '@/app/lib/mongoDB'; // Исправлен импорт
 import Comment from '@/models/Comment';
 import Notification from '@/models/Notification';
 import mongoose from 'mongoose';
 
+// Определение интерфейса для реакции
+interface Reaction {
+  emoji: string;
+  users: string[];
+}
+
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    await dbConnect();
+    await connectToDB();
     const { userId, emoji } = await request.json();
 
     if (!mongoose.Types.ObjectId.isValid(params.id) || !mongoose.Types.ObjectId.isValid(userId)) {
@@ -38,19 +44,19 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     if (!comment.likes) comment.likes = [];
 
     // Проверяем текущую реакцию пользователя
-    const userCurrentReaction = comment.reactions.find((r) => r.users.includes(userId));
+    const userCurrentReaction = comment.reactions.find((r: Reaction) => r.users.includes(userId));
     let action = '';
 
     if (userCurrentReaction && userCurrentReaction.emoji === emoji) {
       // Удаляем реакцию пользователя
-      comment.reactions = comment.reactions.filter((r) => !r.users.includes(userId));
+      comment.reactions = comment.reactions.filter((r: Reaction) => !r.users.includes(userId));
       action = 'removed';
     } else {
       // Удаляем все предыдущие реакции пользователя
-      comment.reactions = comment.reactions.filter((r) => !r.users.includes(userId));
+      comment.reactions = comment.reactions.filter((r: Reaction) => !r.users.includes(userId));
 
       // Добавляем новую реакцию
-      const reactionIndex = comment.reactions.findIndex((r) => r.emoji === emoji);
+      const reactionIndex = comment.reactions.findIndex((r: Reaction) => r.emoji === emoji);
       if (reactionIndex === -1) {
         comment.reactions.push({ emoji, users: [userId] });
       } else {

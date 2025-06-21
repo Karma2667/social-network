@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/app/lib/mongoDB';
+import { connectToDB } from '@/app/lib/mongoDB'; // Исправлен импорт
 import Comment from '@/models/Comment';
 import Post from '@/models/Post';
 import mongoose from 'mongoose';
@@ -8,7 +8,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
   console.time('PUT /api/comments/[id]: Total');
   console.log('PUT /api/comments/[id]: Запрос получен, id:', params.id);
   try {
-    await dbConnect();
+    await connectToDB();
     console.log('PUT /api/comments/[id]: MongoDB подключен');
 
     const userId = request.headers.get('x-user-id');
@@ -51,7 +51,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
   console.time('DELETE /api/comments/[id]: Total');
   console.log('DELETE /api/comments/[id]: Запрос получен, id:', params.id);
   try {
-    await dbConnect();
+    await connectToDB();
     console.log('DELETE /api/comments/[id]: MongoDB подключен');
 
     const userId = request.headers.get('x-user-id');

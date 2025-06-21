@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import dbConnect from '@/app/lib/mongoDB';
+import { connectToDB } from '@/app/lib/mongoDB'; // Исправлен импорт
 import Comment from '@/models/Comment';
 import Notification from '@/models/Notification';
 import mongoose from 'mongoose';
@@ -12,7 +12,7 @@ interface Reaction {
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    await dbConnect();
+    await connectToDB();
     const { userId } = await request.json();
 
     if (!mongoose.Types.ObjectId.isValid(params.id) || !mongoose.Types.ObjectId.isValid(userId)) {
