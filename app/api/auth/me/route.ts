@@ -14,6 +14,7 @@ interface LeanSession {
 interface LeanUser {
   _id: string;
   username: string;
+  avatar?: string; // Добавляем поддержку avatar
   __v?: number;
 }
 
@@ -39,15 +40,19 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Неверный токен' }, { status: 401 });
     }
 
-    const user = await User.findById(session.userId).select('username').lean<LeanUser>();
+    const user = await User.findById(session.userId).select('username avatar').lean<LeanUser>(); // Добавляем avatar
     if (!user) {
       console.log('GET /api/auth/me: Пользователь не найден');
       return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 });
     }
 
-    console.log('GET /api/auth/me: Пользователь найден:', { userId: session.userId, username: user.username });
+    console.log('GET /api/auth/me: Пользователь найден:', { userId: session.userId, username: user.username, avatar: user.avatar });
     console.timeEnd('GET /api/auth/me: Total');
-    return NextResponse.json({ userId: session.userId, username: user.username }, { status: 200 });
+    return NextResponse.json({
+      userId: session.userId,
+      username: user.username,
+      avatar: user.avatar || '/default-avatar.png', // Возвращаем avatar или заглушку
+    }, { status: 200 });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
     console.error('GET /api/auth/me: Ошибка:', errorMessage, error);

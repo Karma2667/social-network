@@ -1,266 +1,143 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { Container, Form, Button, Alert, Modal, FormCheck, Image } from 'react-bootstrap';
-import { useAuth } from '@/app/lib/ClientAuthProvider';
+import { useState, useEffect } from 'react';
+import { Card, Button, Form, Image } from 'react-bootstrap';
+import { useAuth } from '@/app/lib/AuthContext';
 
-const INTERESTS = [
-  'Программирование', 'Музыка', 'Игры', 'Путешествия', 'Спорт',
-  'Книги', 'Фильмы', 'Кулинария', 'Искусство', 'Наука',
-];
-
-interface ProfileData {
-  _id: string;
+interface ProfileProps {
+  userId: string;
   username: string;
   name?: string;
-  bio: string;
+  bio?: string;
   avatar?: string;
-  interests: string[];
+  interests?: string[];
 }
 
-export default function Profile() {
-  const { userId, isInitialized, username } = useAuth();
-  const [profile, setProfile] = useState<ProfileData | null>(null);
-  const [name, setName] = useState('');
-  const [newUsername, setNewUsername] = useState('');
-  const [bio, setBio] = useState('');
-  const [avatar, setAvatar] = useState<File | null>(null);
-  const [interests, setInterests] = useState<string[]>([]);
-  const [showInterestsModal, setShowInterestsModal] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const avatarInputRef = useRef<HTMLInputElement>(null);
+export default function Profile({ userId, username, name, bio, avatar, interests }: ProfileProps) {
+  const { user } = useAuth();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedName, setEditedName] = useState(name || '');
+  const [editedBio, setEditedBio] = useState(bio || '');
+  const [editedInterests, setEditedInterests] = useState(interests || []);
 
   useEffect(() => {
-    if (!isInitialized || !userId) {
-      console.log('Profile: Ожидание инициализации или userId');
-      return;
-    }
-    setLoading(true);
-    const fetchProfile = async () => {
-      try {
-        const authToken = localStorage.getItem('authToken') || '';
-        const headers: Record<string, string> = { 'Authorization': `Bearer ${authToken}` };
-        if (userId) headers['x-user-id'] = userId;
-        const res = await fetch('/api/profile', {
-          headers,
-          cache: 'no-store',
-        });
-        if (!res.ok) {
-          const errorData = await res.json();
-          throw new Error(`Не удалось загрузить профиль: ${res.status} ${errorData.error || ''}`);
-        }
-        const data: ProfileData = await res.json();
-        setProfile(data);
-        setNewUsername(data.username || '');
-        setName(data.name || '');
-        setBio(data.bio || '');
-        setInterests(data.interests || []);
-        setLoading(false);
-      } catch (err: any) {
-        console.error('Profile: Ошибка загрузки профиля:', err.message);
-        setError(err.message);
-        setLoading(false);
-      }
-    };
-    fetchProfile();
-  }, [userId, isInitialized]);
+    setEditedName(name || '');
+    setEditedBio(bio || '');
+    setEditedInterests(interests || []);
+  }, [name, bio, interests]);
 
-  const checkUsernameAvailability = async (username: string) => {
-    if (!username.trim()) return false;
+  const handleSave = async () => {
+    if (!user) return;
     try {
       const authToken = localStorage.getItem('authToken') || '';
-      const headers: Record<string, string> = { 'Authorization': `Bearer ${authToken}` };
-      if (userId) headers['x-user-id'] = userId;
-      const res = await fetch(`/api/profile?username=${encodeURIComponent(username)}`, {
-        headers,
-      });
-      const data = await res.json();
-      return res.ok && !data.exists;
-    } catch {
-      return false;
-    }
-  };
-
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    if (!userId) {
-      setError('Пользователь не аутентифицирован');
-      return;
-    }
-    if (!newUsername.trim()) {
-      setError('Введите имя пользователя');
-      return;
-    }
-    if (interests.length === 0) {
-      setError('Выберите хотя бы один интерес');
-      return;
-    }
-    if (interests.length > 5) {
-      setError('Максимум 5 интересов');
-      return;
-    }
-
-    const isUsernameAvailable = await checkUsernameAvailability(newUsername);
-    if (!isUsernameAvailable && (!profile || profile.username !== newUsername)) {
-      setError('Имя пользователя уже занято');
-      return;
-    }
-
-    try {
-      const authToken = localStorage.getItem('authToken') || '';
-      const headers: Record<string, string> = { 'Authorization': `Bearer ${authToken}` };
-      if (userId) headers['x-user-id'] = userId;
-      const formData = new FormData();
-      formData.append('name', name || '');
-      formData.append('username', newUsername);
-      formData.append('bio', bio || '');
-      formData.append('interests', JSON.stringify(interests));
-      if (avatar) formData.append('avatar', avatar);
-
       const res = await fetch('/api/profile', {
         method: 'PUT',
-        headers,
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': user.userId,
+          'Authorization': `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ name: editedName, bio: editedBio, interests: editedInterests }),
       });
 
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(`Не удалось обновить профиль: ${res.status} ${errorData.error || ''}`);
+        throw new Error(errorData.error || 'Не удалось обновить профиль');
       }
 
-      const updatedProfile: ProfileData = await res.json();
-      setProfile(updatedProfile);
-      setAvatar(null);
-      setShowInterestsModal(false);
+      setIsEditing(false);
     } catch (err: any) {
       console.error('Profile: Ошибка обновления:', err.message);
-      setError(err.message);
     }
   };
 
-  const handleInterestToggle = (interest: string) => {
-    setInterests((prev) =>
-      prev.includes(interest)
-        ? prev.filter((i) => i !== interest)
-        : prev.length < 5
-        ? [...prev, interest]
-        : prev
-    );
-  };
-
-  const handleAvatarChange = () => {
-    if (avatarInputRef.current) avatarInputRef.current.click();
-  };
-
-  if (!isInitialized || loading) return <div>Загрузка...</div>;
-  if (!userId) return null;
+  const avatarUrl = avatar && avatar.trim() && avatar !== '/default-avatar.png'
+    ? avatar
+    : '/default-avatar.png';
 
   return (
-    <Container className="telegram-profile">
-      <h2>Профиль @{username}</h2>
-      <div className="text-center mb-4">
-        <Image
-          src={profile?.avatar || '/default-avatar.png'}
-          alt="Аватар"
-          roundedCircle
-          className="telegram-profile-avatar"
-          style={{ width: '150px', height: '150px' }}
-          onError={(e) => { (e.target as HTMLImageElement).src = '/default-avatar.png'; }}
-        />
-        <Button variant="outline-primary" onClick={handleAvatarChange} className="mt-2">
-          Изменить аватар
-        </Button>
-        <input
-          type="file"
-          accept="image/*"
-          ref={avatarInputRef}
-          onChange={(e) => setAvatar(e.target.files?.[0] || null)}
-          style={{ display: 'none' }}
-        />
-      </div>
-      {error && <Alert variant="danger">{error}</Alert>}
-      {profile && (
-        <Form onSubmit={handleUpdate} className="w-100" style={{ maxWidth: '400px' }}>
-          <Form.Group className="mb-3">
-            <Form.Label>Имя</Form.Label>
-            <Form.Control
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Введите имя"
-            />
-          </Form.Group>
-          <Form.Group className="mb-3">
-            <Form.Label>Имя пользователя</Form.Label>
-            <Form.Control
-              type="text"
-              value={newUsername}
-              onChange={(e) => setNewUsername(e.target.value)}
-              placeholder="Введите @username"
-            />
-          </Form.Group>
-          <Form.Group className="mb-3">
-            <Form.Label>Биография</Form.Label>
-            <Form.Control
-              as="textarea"
-              rows={3}
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              placeholder="Расскажите о себе"
-            />
-          </Form.Group>
-          <Form.Group className="mb-3">
-            <Button
-              variant="outline-primary"
-              onClick={() => setShowInterestsModal(true)}
-            >
-              Выбрать интересы
-            </Button>
-          </Form.Group>
-          <Button variant="primary" type="submit">
-            Обновить профиль
-          </Button>
-        </Form>
-      )}
-      <Modal show={showInterestsModal} onHide={() => setShowInterestsModal(false)}>
-        <Modal.Header closeButton>
-          <Modal.Title>Выберите интересы</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {INTERESTS.map((interest) => (
-            <FormCheck
-              key={interest}
-              type="checkbox"
-              label={interest}
-              checked={interests.includes(interest)}
-              onChange={() => handleInterestToggle(interest)}
-              className="mb-2"
-            />
-          ))}
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowInterestsModal(false)}>
-            Закрыть
-          </Button>
-          <Button variant="primary" onClick={() => setShowInterestsModal(false)}>
-            Сохранить
-          </Button>
-        </Modal.Footer>
-      </Modal>
-      <h4 className="mt-4">Мои интересы</h4>
-      <div>
-        {profile?.interests.length ? (
-          profile.interests.map((interest) => (
-            <span key={interest} className="badge bg-primary me-1">
-              {interest}
-            </span>
-          ))
+    <Card className="telegram-profile-card">
+      <Card.Body>
+        <div className="text-center mb-4">
+          <Image
+            src={avatarUrl}
+            alt="Аватар"
+            roundedCircle
+            className="telegram-profile-avatar"
+            style={{ width: '150px', height: '150px' }}
+            onError={(e) => { (e.target as HTMLImageElement).src = '/default-avatar.png'; }}
+          />
+        </div>
+        {isEditing ? (
+          <Form>
+            <Form.Group className="mb-3">
+              <Form.Label>Имя</Form.Label>
+              <Form.Control
+                type="text"
+                value={editedName}
+                onChange={(e) => setEditedName(e.target.value)}
+                placeholder="Введите имя"
+              />
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Биография</Form.Label>
+              <Form.Control
+                as="textarea"
+                rows={3}
+                value={editedBio}
+                onChange={(e) => setEditedBio(e.target.value)}
+                placeholder="Расскажите о себе"
+              />
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Интересы</Form.Label>
+              <div>
+                {editedInterests.map((interest, index) => (
+                  <span key={index} className="badge bg-primary me-1 mb-1">
+                    {interest}
+                  </span>
+                ))}
+                <Button
+                  variant="outline-primary"
+                  onClick={() => {/* Логика выбора интересов */}}
+                  className="mt-2"
+                >
+                  Добавить интерес
+                </Button>
+              </div>
+            </Form.Group>
+            <div className="d-flex gap-2">
+              <Button variant="primary" onClick={handleSave}>
+                Сохранить
+              </Button>
+              <Button variant="secondary" onClick={() => setIsEditing(false)}>
+                Отмена
+              </Button>
+            </div>
+          </Form>
         ) : (
-          <p>Выберите интересы, чтобы другие могли вас найти!</p>
+          <>
+            <Card.Title className="text-center">{username}</Card.Title>
+            {name && <Card.Text className="text-center">Имя: {name}</Card.Text>}
+            {bio && <Card.Text className="text-center">О себе: {bio}</Card.Text>}
+            {interests && interests.length > 0 && (
+              <Card.Text className="text-center">
+                Интересы:{' '}
+                {interests.map((interest, index) => (
+                  <span key={index} className="badge bg-primary me-1">
+                    {interest}
+                  </span>
+                ))}
+              </Card.Text>
+            )}
+            {user && user.userId === userId && (
+              <Button variant="outline-primary" onClick={() => setIsEditing(true)} className="w-100 mt-3">
+                Редактировать профиль
+              </Button>
+            )}
+          </>
         )}
-      </div>
-    </Container>
+      </Card.Body>
+    </Card>
   );
 }

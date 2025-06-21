@@ -7,8 +7,8 @@ export interface PostDocument extends Document {
   content: string;
   createdAt: Date;
   updatedAt?: Date;
-  likes: string[];
-  reactions: { emoji: string; users: string[] }[];
+  likes: Types.ObjectId[];
+  reactions: { emoji: string; users: Types.ObjectId[] }[];
   images: string[];
   comments: Types.ObjectId[];
 }
@@ -21,8 +21,8 @@ const PostSchema = new mongoose.Schema<PostDocument>(
     content: { type: String, required: true },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date },
-    likes: [{ type: String, default: [] }],
-    reactions: [{ emoji: String, users: [{ type: String }] }],
+    likes: [{ type: Schema.Types.ObjectId, ref: 'User', default: [] }],
+    reactions: [{ emoji: String, users: [{ type: Schema.Types.ObjectId, ref: 'User' }], default: [] }],
     images: [{ type: String, default: [] }],
     comments: [{ type: Schema.Types.ObjectId, ref: 'Comment', default: [] }],
   },

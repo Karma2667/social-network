@@ -1,232 +1,147 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { useAuth } from '@/app/lib/AuthContext';
-import { Container, Row, Col, Form, Button, Alert, ListGroup, Modal, FormCheck, Image } from 'react-bootstrap';
+import { useState, useEffect, useRef } from 'react';
+import { Container, Form, Button, Alert, Modal, FormCheck, Image } from 'react-bootstrap';
+import { useAuth } from '@/app/lib/ClientAuthProvider';
+
+const INTERESTS = [
+  'Программирование', 'Музыка', 'Игры', 'Путешествия', 'Спорт',
+  'Книги', 'Фильмы', 'Кулинария', 'Искусство', 'Наука',
+];
 
 interface ProfileData {
   _id: string;
-  name: string;
   username: string;
+  name?: string;
   bio: string;
+  avatar?: string;
   interests: string[];
 }
 
-const PREDEFINED_INTERESTS = [
-  'Программирование',
-  'Музыка',
-  'Игры',
-  'Путешествия',
-  'Спорт',
-  'Книги',
-  'Фильмы',
-  'Кулинария',
-  'Искусство',
-  'Наука',
-];
-
-export default function ProfilePage() {
-  const { id: profileId } = useParams();
-  const { user, isInitialized } = useAuth();
-  const router = useRouter();
-  const [isDesktop, setIsDesktop] = useState(true);
+export default function Profile() {
+  const { userId, isInitialized, username } = useAuth();
   const [profile, setProfile] = useState<ProfileData | null>(null);
-  const [posts, setPosts] = useState<any[]>([]);
-  const [postContent, setPostContent] = useState('');
-  const [editingPostId, setEditingPostId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [name, setName] = useState('');
+  const [newUsername, setNewUsername] = useState('');
+  const [bio, setBio] = useState('');
+  const [avatar, setAvatar] = useState<File | null>(null);
+  const [interests, setInterests] = useState<string[]>([]);
   const [showInterestsModal, setShowInterestsModal] = useState(false);
-  const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
-  const [customInterest, setCustomInterest] = useState('');
-  const [friendStatus, setFriendStatus] = useState<'none' | 'pending' | 'friends'>('none');
-  const [isFollowing, setIsFollowing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const checkDesktop = () => {
-      const desktop = window.innerWidth > 768;
-      setIsDesktop(desktop);
-    };
-    checkDesktop();
-    window.addEventListener('resize', checkDesktop);
-    return () => window.removeEventListener('resize', checkDesktop);
-  }, []);
-
-  useEffect(() => {
-    if (!isInitialized) {
-      console.log('ProfilePage: Ожидание инициализации AuthContext...');
+    if (!isInitialized || !userId) {
+      console.log('Profile: Ожидание инициализации или userId');
       return;
     }
-
-    if (!user) {
-      console.log('ProfilePage: Пользователь не авторизован, редирект на /login');
-      router.replace('/login');
-      return;
-    }
-
-    console.log('ProfilePage: userId для запроса:', user.userId);
-
+    setLoading(true);
     const fetchProfile = async () => {
       try {
-        setLoading(true);
         const authToken = localStorage.getItem('authToken') || '';
-        const profileUrl = profileId ? `/api/users/${profileId}` : '/api/profile';
-        console.log('ProfilePage: Выполняется запрос к:', profileUrl);
-        console.log('ProfilePage: Заголовки запроса:', {
-          'x-user-id': user.userId,
-          'Authorization': `Bearer ${authToken}`,
-        });
-
-        const res = await fetch(profileUrl, {
-          headers: {
-            'x-user-id': user.userId,
-            'Authorization': `Bearer ${authToken}`,
-          },
+        const headers: Record<string, string> = { 'Authorization': `Bearer ${authToken}` };
+        if (userId) headers['x-user-id'] = userId;
+        const res = await fetch('/api/profile', {
+          headers,
           cache: 'no-store',
         });
-
         if (!res.ok) {
           const errorData = await res.json();
-          console.log('ProfilePage: Ошибка ответа API:', errorData);
-          throw new Error('Failed to fetch profile');
+          throw new Error(`Не удалось загрузить профиль: ${res.status} ${errorData.error || ''}`);
         }
-
-        const data = await res.json();
-        setProfile({
-          _id: data._id,
-          name: data.name || '',
-          username: data.username || '',
-          bio: data.bio || '',
-          interests: data.interests || [],
-        });
-        setSelectedInterests(data.interests || []);
-        setPosts(data.posts || []);
-        setFriendStatus(data.friendStatus || 'none');
-        setIsFollowing(data.isFollowing || false);
-      } catch (error: any) {
-        console.error('Fetch profile error:', error.message);
-        setError('Ошибка загрузки профиля');
-      } finally {
+        const data: ProfileData = await res.json();
+        setProfile(data);
+        setNewUsername(data.username || '');
+        setName(data.name || '');
+        setBio(data.bio || '');
+        setInterests(data.interests || []);
+        setLoading(false);
+      } catch (err: any) {
+        console.error('Profile: Ошибка загрузки профиля:', err.message);
+        setError(err.message);
         setLoading(false);
       }
     };
-
     fetchProfile();
-  }, [isInitialized, user, profileId]);
+  }, [userId, isInitialized]);
 
-  const handleProfileSubmit = async (e: React.FormEvent) => {
+  const checkUsernameAvailability = async (username: string) => {
+    if (!username.trim()) return false;
+    try {
+      const authToken = localStorage.getItem('authToken') || '';
+      const headers: Record<string, string> = { 'Authorization': `Bearer ${authToken}` };
+      if (userId) headers['x-user-id'] = userId;
+      const res = await fetch(`/api/profile?username=${encodeURIComponent(username)}`, {
+        headers,
+      });
+      const data = await res.json();
+      return res.ok && !data.exists;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (submitting || !isOwnProfile()) return;
-    setSubmitting(true);
     setError(null);
+    if (!userId) {
+      setError('Пользователь не аутентифицирован');
+      return;
+    }
+    if (!newUsername.trim()) {
+      setError('Введите имя пользователя');
+      return;
+    }
+    if (interests.length === 0) {
+      setError('Выберите хотя бы один интерес');
+      return;
+    }
+    if (interests.length > 5) {
+      setError('Максимум 5 интересов');
+      return;
+    }
+
+    const isUsernameAvailable = await checkUsernameAvailability(newUsername);
+    if (!isUsernameAvailable && (!profile || profile.username !== newUsername)) {
+      setError('Имя пользователя уже занято');
+      return;
+    }
 
     try {
       const authToken = localStorage.getItem('authToken') || '';
-      const updateData = { ...profile, interests: selectedInterests };
+      const headers: Record<string, string> = { 'Authorization': `Bearer ${authToken}` };
+      if (userId) headers['x-user-id'] = userId;
+      const formData = new FormData();
+      formData.append('name', name || '');
+      formData.append('username', newUsername);
+      formData.append('bio', bio || '');
+      formData.append('interests', JSON.stringify(interests));
+      if (avatar) formData.append('avatar', avatar);
+
       const res = await fetch('/api/profile', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user?.userId || '',
-          'Authorization': `Bearer ${authToken}`,
-        },
-        body: JSON.stringify(updateData),
+        headers,
+        body: formData,
       });
 
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.error || 'Ошибка обновления профиля');
+        throw new Error(`Не удалось обновить профиль: ${res.status} ${errorData.error || ''}`);
       }
 
-      const updatedProfile = await res.json();
-      localStorage.setItem('username', updatedProfile.username);
-      setProfile({
-        _id: updatedProfile._id,
-        name: updatedProfile.name || '',
-        username: updatedProfile.username || '',
-        bio: updatedProfile.bio || '',
-        interests: updatedProfile.interests || [],
-      });
-      setSelectedInterests(updatedProfile.interests || []);
+      const updatedProfile: ProfileData = await res.json();
+      setProfile(updatedProfile);
+      setAvatar(null);
+      setShowInterestsModal(false);
     } catch (err: any) {
-      console.error('Ошибка обновления:', err.message);
-      setError(err.message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handlePostSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (submitting || !postContent.trim() || !isOwnProfile()) return;
-    setSubmitting(true);
-    setError(null);
-
-    try {
-      const authToken = localStorage.getItem('authToken') || '';
-      const url = editingPostId ? `/api/posts/${editingPostId}` : '/api/posts';
-      const method = editingPostId ? 'PUT' : 'POST';
-      const res = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user?.userId || '',
-          'Authorization': `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({ content: postContent, userId: user?.userId }),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Ошибка с постом');
-      }
-
-      const updatedPost = await res.json();
-      setPosts((prev) =>
-        editingPostId
-          ? prev.map((post) => (post._id === editingPostId ? updatedPost : post))
-          : [updatedPost, ...prev]
-      );
-      setPostContent('');
-      setEditingPostId(null);
-    } catch (err: any) {
-      console.error('Ошибка с постом:', err.message);
-      setError(err.message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleEditPost = (post: any) => {
-    if (!isOwnProfile()) return;
-    setPostContent(post.content);
-    setEditingPostId(post._id);
-  };
-
-  const handleDeletePost = async (postId: string) => {
-    if (!isOwnProfile()) return;
-    try {
-      const authToken = localStorage.getItem('authToken') || '';
-      const res = await fetch(`/api/posts/${postId}`, {
-        method: 'DELETE',
-        headers: {
-          'x-user-id': user?.userId || '',
-          'Authorization': `Bearer ${authToken}`,
-        },
-      });
-      if (res.ok) {
-        setPosts((prev) => prev.filter((post) => post._id !== postId));
-      }
-    } catch (err: any) {
-      console.error('Ошибка удаления поста:', err.message);
+      console.error('Profile: Ошибка обновления:', err.message);
       setError(err.message);
     }
   };
 
   const handleInterestToggle = (interest: string) => {
-    setSelectedInterests((prev) =>
+    setInterests((prev) =>
       prev.includes(interest)
         ? prev.filter((i) => i !== interest)
         : prev.length < 5
@@ -235,421 +150,117 @@ export default function ProfilePage() {
     );
   };
 
-  const handleAddCustomInterest = () => {
-    if (customInterest.trim() && !selectedInterests.includes(customInterest.trim()) && selectedInterests.length < 5) {
-      setSelectedInterests((prev) => [...prev, customInterest.trim()]);
-      setCustomInterest('');
-    }
+  const handleAvatarChange = () => {
+    if (avatarInputRef.current) avatarInputRef.current.click();
   };
 
-  const handleFriendRequest = async () => {
-    if (!user || !profile || isOwnProfile()) return;
-
-    try {
-      const authToken = localStorage.getItem('authToken') || '';
-      if (friendStatus === 'pending') {
-        const res = await fetch(`/api/friends?requestId=${friendStatus}`, {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-user-id': user.userId,
-            'Authorization': `Bearer ${authToken}`,
-          },
-        });
-        if (res.ok) setFriendStatus('none');
-      } else if (friendStatus === 'none') {
-        const res = await fetch('/api/friends', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-user-id': user.userId,
-            'Authorization': `Bearer ${authToken}`,
-          },
-          body: JSON.stringify({ toUserId: profile._id }),
-        });
-        if (res.ok) setFriendStatus('pending');
-      }
-    } catch (error: any) {
-      console.error('Ошибка при обработке запроса:', error.message);
-      setError('Ошибка при отправке запроса');
-    }
-  };
-
-  const handleFollowToggle = async () => {
-    if (!user || !profile || isOwnProfile()) return;
-
-    try {
-      const authToken = localStorage.getItem('authToken') || '';
-      const action = isFollowing ? 'unfollow' : 'follow';
-      const method = action === 'follow' ? 'POST' : 'PUT';
-      const res = await fetch('/api/friends', {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user.userId,
-          'Authorization': `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({ toUserId: profile._id, action }),
-      });
-      if (res.ok) {
-        setIsFollowing(!isFollowing);
-      } else {
-        const data = await res.json();
-        setError(data.error || 'Ошибка при подписке');
-      }
-    } catch (error: any) {
-      console.error('Ошибка при подписке:', error.message);
-      setError('Ошибка при подписке');
-    }
-  };
-
-  const isOwnProfile = () => {
-    return !profileId || (user && profile && user.userId === profile._id);
-  };
-
-  if (!isInitialized || loading) {
-    return <div>Загрузка...</div>;
-  }
-
-  if (!user || !profile) {
-    router.replace('/login');
-    return null;
-  }
+  if (!isInitialized || loading) return <div>Загрузка...</div>;
+  if (!userId) return null;
 
   return (
-    <Container fluid>
-      <Row>
-        {isDesktop && (
-          <Col md={3} className="border-end telegram-sidebar">
-            <div className="p-3">
-              <h5>Профиль</h5>
-              {isOwnProfile() ? (
-                <Form onSubmit={handleProfileSubmit}>
-                  <Form.Group className="mb-3">
-                    <Form.Label>Имя</Form.Label>
-                    <Form.Control
-                      type="text"
-                      value={profile.name}
-                      onChange={(e) => setProfile({ ...profile, name: e.target.value } as ProfileData)}
-                      placeholder="Введите имя"
-                      disabled={submitting}
-                      className="telegram-post-input"
-                    />
-                  </Form.Group>
-                  <Form.Group className="mb-3">
-                    <Form.Label>Имя пользователя</Form.Label>
-                    <Form.Control
-                      type="text"
-                      value={profile.username}
-                      onChange={(e) => setProfile({ ...profile, username: e.target.value } as ProfileData)}
-                      placeholder="Введите @username"
-                      disabled={submitting}
-                      className="telegram-post-input"
-                    />
-                  </Form.Group>
-                  <Form.Group className="mb-3">
-                    <Form.Label>Био</Form.Label>
-                    <Form.Control
-                      as="textarea"
-                      value={profile.bio}
-                      onChange={(e) => setProfile({ ...profile, bio: e.target.value } as ProfileData)}
-                      placeholder="Расскажите о себе"
-                      disabled={submitting}
-                      className="telegram-post-input"
-                    />
-                  </Form.Group>
-                  <Form.Group className="mb-3">
-                    <Form.Label>Интересы</Form.Label>
-                    <div className="mb-2">
-                      {profile.interests.length > 0 ? (
-                        profile.interests.map((interest) => (
-                          <span key={interest} className="badge bg-primary me-1 telegram-profile-button">
-                            {interest}
-                          </span>
-                        ))
-                      ) : (
-                        <p>Нет интересов</p>
-                      )}
-                    </div>
-                    <Button
-                      variant="outline-primary"
-                      onClick={() => setShowInterestsModal(true)}
-                      className="telegram-profile-button"
-                    >
-                      Выбрать интересы
-                    </Button>
-                  </Form.Group>
-                  <Button variant="primary" type="submit" disabled={submitting} className="telegram-profile-button">
-                    {submitting ? 'Сохранение...' : 'Сохранить'}
-                  </Button>
-                </Form>
-              ) : (
-                <div>
-                  <Image
-                    src="/default-avatar.png"
-                    alt={profile.username}
-                    roundedCircle
-                    className="telegram-profile-avatar mb-3"
-                  />
-                  <h5>@{profile.username}</h5>
-                  {profile.name && <p>Имя: {profile.name}</p>}
-                  {profile.bio && <p>О себе: {profile.bio}</p>}
-                  {profile.interests.length > 0 && (
-                    <p>
-                      Интересы:{' '}
-                      {profile.interests.map((interest) => (
-                        <span key={interest} className="badge bg-primary me-1">
-                          {interest}
-                        </span>
-                      ))}
-                    </p>
-                  )}
-                  <Button
-                    variant={friendStatus === 'pending' ? 'warning' : friendStatus === 'friends' ? 'success' : 'primary'}
-                    onClick={handleFriendRequest}
-                    disabled={friendStatus === 'friends'}
-                    className="telegram-profile-button mt-2 me-2"
-                  >
-                    {friendStatus === 'pending' ? 'Отменить запрос' : friendStatus === 'friends' ? 'Друзья' : 'Добавить в друзья'}
-                  </Button>
-                  <Button
-                    variant={isFollowing ? 'secondary' : 'outline-primary'}
-                    onClick={handleFollowToggle}
-                    className="telegram-profile-button mt-2"
-                  >
-                    {isFollowing ? 'Отписаться' : 'Подписаться'}
-                  </Button>
-                </div>
-              )}
-            </div>
-          </Col>
-        )}
-        <Col md={isDesktop ? 9 : 12}>
-          <div className="p-3 telegram-posts">
-            <h5>Посты</h5>
-            {isOwnProfile() && (
-              <Form onSubmit={handlePostSubmit} className="mb-3">
-                <Form.Group className="mb-3">
-                  <Form.Control
-                    as="textarea"
-                    value={postContent}
-                    onChange={(e) => setPostContent(e.target.value)}
-                    placeholder="Что нового?"
-                    disabled={submitting}
-                    className="telegram-post-input"
-                  />
-                </Form.Group>
-                <Button
-                  variant="primary"
-                  type="submit"
-                  disabled={submitting || !postContent.trim()}
-                  className="telegram-post-button"
-                >
-                  {submitting ? 'Отправка...' : editingPostId ? 'Обновить' : 'Опубликовать'}
-                </Button>
-                {editingPostId && (
-                  <Button
-                    variant="secondary"
-                    className="ms-2 telegram-profile-button"
-                    onClick={() => {
-                      setPostContent('');
-                      setEditingPostId(null);
-                    }}
-                    disabled={submitting}
-                  >
-                    Отмена
-                  </Button>
-                )}
-              </Form>
-            )}
-            {error && <Alert variant="danger">{error}</Alert>}
-            <ListGroup>
-              {posts.map((post) => (
-                <ListGroup.Item key={post._id} className="telegram-post-item">
-                  <p>{post.content}</p>
-                  {isOwnProfile() && (
-                    <>
-                      <Button
-                        variant="link"
-                        onClick={() => handleEditPost(post)}
-                        className="me-2"
-                      >
-                        Редактировать
-                      </Button>
-                      <Button
-                        variant="link"
-                        onClick={() => handleDeletePost(post._id)}
-                        className="text-danger"
-                      >
-                        Удалить
-                      </Button>
-                    </>
-                  )}
-                </ListGroup.Item>
-              ))}
-            </ListGroup>
-            {!isDesktop && (
-              <div className="mt-4">
-                <h5>Профиль</h5>
-                {isOwnProfile() ? (
-                  <Form onSubmit={handleProfileSubmit}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Имя</Form.Label>
-                      <Form.Control
-                        type="text"
-                        value={profile.name}
-                        onChange={(e) => setProfile({ ...profile, name: e.target.value } as ProfileData)}
-                        placeholder="Введите имя"
-                        disabled={submitting}
-                        className="telegram-post-input"
-                      />
-                    </Form.Group>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Имя пользователя</Form.Label>
-                      <Form.Control
-                        type="text"
-                        value={profile.username}
-                        onChange={(e) => setProfile({ ...profile, username: e.target.value } as ProfileData)}
-                        placeholder="Введите @username"
-                        disabled={submitting}
-                        className="telegram-post-input"
-                      />
-                    </Form.Group>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Био</Form.Label>
-                      <Form.Control
-                        as="textarea"
-                        value={profile.bio}
-                        onChange={(e) => setProfile({ ...profile, bio: e.target.value } as ProfileData)}
-                        placeholder="Расскажите о себе"
-                        disabled={submitting}
-                        className="telegram-post-input"
-                      />
-                    </Form.Group>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Интересы</Form.Label>
-                      <div className="mb-2">
-                        {profile.interests.length > 0 ? (
-                          profile.interests.map((interest) => (
-                            <span key={interest} className="badge bg-primary me-1 telegram-profile-button">
-                              {interest}
-                            </span>
-                          ))
-                        ) : (
-                          <p>Нет интересов</p>
-                        )}
-                      </div>
-                      <Button
-                        variant="outline-primary"
-                        onClick={() => setShowInterestsModal(true)}
-                        className="telegram-profile-button"
-                      >
-                        Выбрать интересы
-                      </Button>
-                    </Form.Group>
-                    <Button variant="primary" type="submit" disabled={submitting} className="telegram-profile-button">
-                      {submitting ? 'Сохранение...' : 'Сохранить'}
-                    </Button>
-                  </Form>
-                ) : (
-                  <div>
-                    <Image
-                      src="/default-avatar.png"
-                      alt={profile.username}
-                      roundedCircle
-                      className="telegram-profile-avatar mb-3"
-                    />
-                    <h5>@{profile.username}</h5>
-                    {profile.name && <p>Имя: {profile.name}</p>}
-                    {profile.bio && <p>О себе: {profile.bio}</p>}
-                    {profile.interests.length > 0 && (
-                      <p>
-                        Интересы:{' '}
-                        {profile.interests.map((interest) => (
-                          <span key={interest} className="badge bg-primary me-1">
-                            {interest}
-                          </span>
-                        ))}
-                      </p>
-                    )}
-                    <Button
-                      variant={friendStatus === 'pending' ? 'warning' : friendStatus === 'friends' ? 'success' : 'primary'}
-                      onClick={handleFriendRequest}
-                      disabled={friendStatus === 'friends'}
-                      className="telegram-profile-button mt-2 me-2"
-                    >
-                      {friendStatus === 'pending' ? 'Отменить запрос' : friendStatus === 'friends' ? 'Друзья' : 'Добавить в друзья'}
-                    </Button>
-                    <Button
-                      variant={isFollowing ? 'secondary' : 'outline-primary'}
-                      onClick={handleFollowToggle}
-                      className="telegram-profile-button mt-2"
-                    >
-                      {isFollowing ? 'Отписаться' : 'Подписаться'}
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </Col>
-      </Row>
-      <Modal show={showInterestsModal} onHide={() => setShowInterestsModal(false)} className="telegram-profile">
+    <Container className="telegram-profile">
+      <h2>Профиль @{username}</h2>
+      <div className="text-center mb-4">
+        <Image
+          src={profile?.avatar || '/default-avatar.png'}
+          alt="Аватар"
+          roundedCircle
+          className="telegram-profile-avatar"
+          style={{ width: '150px', height: '150px' }}
+          onError={(e) => { (e.target as HTMLImageElement).src = '/default-avatar.png'; }}
+        />
+        <Button variant="outline-primary" onClick={handleAvatarChange} className="mt-2">
+          Изменить аватар
+        </Button>
+        <input
+          type="file"
+          accept="image/*"
+          ref={avatarInputRef}
+          onChange={(e) => setAvatar(e.target.files?.[0] || null)}
+          style={{ display: 'none' }}
+        />
+      </div>
+      {error && <Alert variant="danger">{error}</Alert>}
+      {profile && (
+        <Form onSubmit={handleUpdate} className="w-100" style={{ maxWidth: '400px' }}>
+          <Form.Group className="mb-3">
+            <Form.Label>Имя</Form.Label>
+            <Form.Control
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Введите имя"
+            />
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>Имя пользователя</Form.Label>
+            <Form.Control
+              type="text"
+              value={newUsername}
+              onChange={(e) => setNewUsername(e.target.value)}
+              placeholder="Введите @username"
+            />
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>Биография</Form.Label>
+            <Form.Control
+              as="textarea"
+              rows={3}
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+              placeholder="Расскажите о себе"
+            />
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Button
+              variant="outline-primary"
+              onClick={() => setShowInterestsModal(true)}
+            >
+              Выбрать интересы
+            </Button>
+          </Form.Group>
+          <Button variant="primary" type="submit">
+            Обновить профиль
+          </Button>
+        </Form>
+      )}
+      <Modal show={showInterestsModal} onHide={() => setShowInterestsModal(false)}>
         <Modal.Header closeButton>
           <Modal.Title>Выберите интересы</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          {PREDEFINED_INTERESTS.map((interest) => (
+          {INTERESTS.map((interest) => (
             <FormCheck
               key={interest}
               type="checkbox"
               label={interest}
-              checked={selectedInterests.includes(interest)}
+              checked={interests.includes(interest)}
               onChange={() => handleInterestToggle(interest)}
               className="mb-2"
             />
           ))}
-          <Form.Group className="mt-3">
-            <Form.Label>Добавить свой интерес</Form.Label>
-            <Form.Control
-              type="text"
-              value={customInterest}
-              onChange={(e) => setCustomInterest(e.target.value)}
-              placeholder="Введите интерес"
-              className="telegram-post-input"
-              disabled={selectedInterests.length >= 5}
-            />
-            <Button
-              variant="outline-primary"
-              className="mt-2 telegram-profile-button"
-              onClick={handleAddCustomInterest}
-              disabled={!customInterest.trim() || selectedInterests.length >= 5}
-            >
-              Добавить
-            </Button>
-          </Form.Group>
         </Modal.Body>
         <Modal.Footer>
-          <Button
-            variant="secondary"
-            onClick={() => setShowInterestsModal(false)}
-            className="telegram-profile-button"
-          >
+          <Button variant="secondary" onClick={() => setShowInterestsModal(false)}>
             Закрыть
           </Button>
-          <Button
-            variant="primary"
-            onClick={() => {
-              setProfile((prev) => prev ? { ...prev, interests: selectedInterests } : null);
-              setShowInterestsModal(false);
-            }}
-icherry-pick = "none"
-            className="telegram-profile-button"
-          >
+          <Button variant="primary" onClick={() => setShowInterestsModal(false)}>
             Сохранить
           </Button>
         </Modal.Footer>
       </Modal>
+      <h4 className="mt-4">Мои интересы</h4>
+      <div>
+        {profile?.interests.length ? (
+          profile.interests.map((interest) => (
+            <span key={interest} className="badge bg-primary me-1">
+              {interest}
+            </span>
+          ))
+        ) : (
+          <p>Выберите интересы, чтобы другие могли вас найти!</p>
+        )}
+      </div>
     </Container>
   );
 }

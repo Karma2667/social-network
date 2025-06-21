@@ -9,25 +9,6 @@ import ReactionPicker from './ReactionPicker';
 import Comment from './Comment';
 import { formatDistanceToNow } from 'date-fns/formatDistanceToNow';
 
-interface PostProps {
-  username: string;
-  content: string;
-  createdAt: string | number;
-  userId: string;
-  likes: string[];
-  reactions: { emoji: string; users: string[] }[];
-  images: string[];
-  postId: string;
-  fetchPosts: () => Promise<void>;
-  userAvatar?: string;
-  comments: CommentProps[];
-  onDelete?: (postId: string) => Promise<void>;
-  isCommunityPost?: boolean;
-  communityId?: string;
-  currentUserId?: string;
-  isAdmin?: boolean;
-}
-
 interface CommentProps {
   _id: string;
   userId: { _id: string; username: string; avatar?: string };
@@ -36,27 +17,43 @@ interface CommentProps {
   likes?: string[];
   reactions?: { emoji: string; users: string[] }[];
   images?: string[];
+  userAvatar?: string;
+}
+
+interface PostProps {
+  postId: string;
+  username: string;
+  content: string;
+  createdAt: string | number;
+  userId: string;
+  likes: string[];
+  reactions: { emoji: string; users: string[] }[];
+  images: string[];
+  comments: CommentProps[];
+  userAvatar?: string;
+  fetchPosts: () => Promise<void>;
+  onDelete: (postId: string) => Promise<void>;
+  currentUserId?: string;
+  isAdmin?: boolean;
 }
 
 export default function Post({
+  postId,
   username,
   content,
   createdAt,
   userId,
   likes = [],
   reactions = [],
-  images,
-  postId,
-  fetchPosts,
+  images = [],
+  comments = [],
   userAvatar,
-  comments: initialComments = [],
+  fetchPosts,
   onDelete,
-  isCommunityPost = false,
-  communityId,
   currentUserId,
-  isAdmin,
+  isAdmin = false,
 }: PostProps) {
-  const { user } = useAuth();
+  const { user, avatar } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(content);
   const [editImages, setEditImages] = useState<File[]>([]);
@@ -67,9 +64,7 @@ export default function Post({
   const [newComment, setNewComment] = useState('');
   const [commentImages, setCommentImages] = useState<File[]>([]);
   const [submittingComment, setSubmittingComment] = useState(false);
-  const [comments, setComments] = useState<CommentProps[]>(initialComments);
-  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
-  const [editCommentContent, setEditCommentContent] = useState('');
+  const [commentsState, setCommentsState] = useState<CommentProps[]>(comments);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -78,15 +73,7 @@ export default function Post({
       const reaction = reactions.find((r) => r.users.includes(user.userId));
       setUserReaction(reaction ? reaction.emoji : null);
     }
-    console.log('Post: Инициализация с комментариями:', comments.map((c) => ({
-      id: c._id,
-      user: c.userId.username,
-      avatar: c.userId.avatar,
-      content: c.content,
-      likes: c.likes?.length,
-      reactions: c.reactions?.map((r) => ({ emoji: r.emoji, users: r.users.length })),
-      images: c.images?.length,
-    })));
+    setCommentsState(comments);
   }, [likes, reactions, user, comments]);
 
   const handleLike = async () => {
@@ -134,13 +121,13 @@ export default function Post({
     e.preventDefault();
     if (!user) return;
     try {
-      let imagePaths = images || [];
+      let imagePaths = images;
       if (editImages.length > 0) {
         const formData = new FormData();
         editImages.forEach((file) => formData.append('files', file));
         const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
         if (!uploadRes.ok) throw new Error((await uploadRes.json()).error || 'Не удалось загрузить изображения');
-        imagePaths = [...imagePaths, ...(await uploadRes.json()).files];
+        imagePaths = [...images, ...(await uploadRes.json()).files];
       }
 
       const authToken = localStorage.getItem('authToken') || '';
@@ -201,16 +188,21 @@ export default function Post({
 
       if (!res.ok) throw new Error(await res.text() || 'Не удалось добавить комментарий');
       const responseData = await res.json();
-      const newCommentObj = {
+      const userAvatar = avatar || '/default-avatar.png';
+      const newCommentObj: CommentProps = {
         _id: responseData._id,
-        userId: { _id: user.userId, username: responseData.userId.username || user.username || 'Unknown', avatar: responseData.userId.avatar },
+        userId: { 
+          _id: user.userId, 
+          username: user.username || 'Unknown', 
+          avatar: userAvatar 
+        },
         content: responseData.content,
         createdAt: responseData.createdAt,
         likes: responseData.likes || [],
         reactions: responseData.reactions || [],
         images: responseData.images || [],
       };
-      setComments((prevComments) => [...prevComments, newCommentObj]);
+      setCommentsState((prev) => [...prev, newCommentObj]);
       setNewComment('');
       setCommentImages([]);
       await fetchPosts();
@@ -218,43 +210,6 @@ export default function Post({
       console.error('Post: Ошибка добавления комментария:', err.message);
     } finally {
       setSubmittingComment(false);
-    }
-  };
-
-  const handleCommentReaction = async (commentId: string, emoji: string) => {
-    if (!user) return;
-    try {
-      const authToken = localStorage.getItem('authToken') || '';
-      const res = await fetch(`/api/comments/${commentId}/reactions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user.userId,
-          'Authorization': `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({ userId: user.userId, emoji }),
-      });
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(errorText || 'Не удалось добавить реакцию к комментарию');
-      }
-      const updatedComment = await res.json();
-      console.log('Reaction response:', updatedComment);
-      setComments((prevComments) =>
-        prevComments.map((c) =>
-          c._id === commentId
-            ? {
-                ...c,
-                ...updatedComment,
-                userId: { _id: updatedComment.userId._id, username: updatedComment.userId.username || 'Unknown', avatar: updatedComment.userId.avatar },
-              }
-            : c
-        )
-      );
-      await fetchPosts();
-      setShowReactions(null);
-    } catch (err: any) {
-      console.error('Post: Ошибка реакции комментария:', err.message);
     }
   };
 
@@ -273,15 +228,10 @@ export default function Post({
       });
       if (!res.ok) throw new Error(await res.text() || 'Не удалось поставить/убрать лайк к комментарию');
       const updatedComment = await res.json();
-      console.log('Like response:', updatedComment);
-      setComments((prevComments) =>
-        prevComments.map((c) =>
+      setCommentsState((prev) =>
+        prev.map((c) =>
           c._id === commentId
-            ? {
-                ...c,
-                ...updatedComment,
-                userId: { _id: updatedComment.userId._id, username: updatedComment.userId.username || 'Unknown', avatar: updatedComment.userId.avatar },
-              }
+            ? { ...c, ...updatedComment, userId: { ...c.userId, ...updatedComment.userId } }
             : c
         )
       );
@@ -291,13 +241,37 @@ export default function Post({
     }
   };
 
-  const handleEditComment = (commentId: string, currentContent: string) => {
-    setEditingCommentId(commentId);
-    setEditCommentContent(currentContent);
+  const handleCommentReaction = async (commentId: string, emoji: string) => {
+    if (!user) return;
+    try {
+      const authToken = localStorage.getItem('authToken') || '';
+      const res = await fetch(`/api/comments/${commentId}/reactions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': user.userId,
+          'Authorization': `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ userId: user.userId, emoji }),
+      });
+      if (!res.ok) throw new Error(await res.text() || 'Не удалось добавить реакцию к комментарию');
+      const updatedComment = await res.json();
+      setCommentsState((prev) =>
+        prev.map((c) =>
+          c._id === commentId
+            ? { ...c, ...updatedComment, userId: { ...c.userId, ...updatedComment.userId } }
+            : c
+        )
+      );
+      await fetchPosts();
+      setShowReactions(null);
+    } catch (err: any) {
+      console.error('Post: Ошибка реакции комментария:', err.message);
+    }
   };
 
-  const handleSaveEditComment = async (commentId: string) => {
-    if (!user || !editCommentContent.trim()) return;
+  const handleCommentEdit = async (commentId: string, newContent: string, newImages: string[]) => {
+    if (!user) return;
     try {
       const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch(`/api/comments/${commentId}`, {
@@ -307,38 +281,44 @@ export default function Post({
           'x-user-id': user.userId,
           'Authorization': `Bearer ${authToken}`,
         },
-        body: JSON.stringify({ content: editCommentContent }),
+        body: JSON.stringify({ content: newContent, images: newImages }),
       });
-
       if (!res.ok) throw new Error(await res.text() || 'Не удалось обновить комментарий');
-      setComments((prevComments) =>
-        prevComments.map((comment) =>
-          comment._id === commentId ? { ...comment, content: editCommentContent } : comment
+      const updatedComment = await res.json();
+      setCommentsState((prev) =>
+        prev.map((c) =>
+          c._id === commentId
+            ? { ...c, ...updatedComment, userId: { ...c.userId, ...updatedComment.userId } }
+            : c
         )
       );
-      setEditingCommentId(null);
-      setEditCommentContent('');
       await fetchPosts();
     } catch (err: any) {
       console.error('Post: Ошибка редактирования комментария:', err.message);
     }
   };
 
-  const handleDeleteComment = async (commentId: string) => {
+  const handleCommentDelete = async (commentId: string) => {
     if (!user) return;
     try {
       const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch(`/api/comments/${commentId}`, {
         method: 'DELETE',
-        headers: { 'x-user-id': user.userId, 'Authorization': `Bearer ${authToken}` },
+        headers: {
+          'x-user-id': user.userId,
+          'Authorization': `Bearer ${authToken}`,
+        },
       });
-
       if (!res.ok) throw new Error(await res.text() || 'Не удалось удалить комментарий');
-      setComments((prevComments) => prevComments.filter((comment) => comment._id !== commentId));
+      setCommentsState((prev) => prev.filter((c) => c._id !== commentId));
       await fetchPosts();
     } catch (err: any) {
       console.error('Post: Ошибка удаления комментария:', err.message);
     }
+  };
+
+  const handleAddCommentEmoji = (emoji: string) => {
+    setNewComment((prev) => prev + emoji);
   };
 
   const avatarUrl = userAvatar && userAvatar.trim() && userAvatar !== '/default-avatar.png'
@@ -349,10 +329,10 @@ export default function Post({
     ? formatDistanceToNow(new Date(createdAt), { addSuffix: true })
     : formatDistanceToNow(new Date(createdAt), { addSuffix: true });
 
-  const canDelete = user?.userId === userId || (isCommunityPost && isAdmin && communityId);
+  const canEditDelete = user?.userId === userId || (isAdmin && currentUserId);
 
   return (
-    <Card className="telegram-post-card position-relative">
+    <Card className="telegram-post-card mb-3">
       <Card.Body>
         <div className="d-flex align-items-center mb-3">
           <Image
@@ -360,12 +340,12 @@ export default function Post({
             roundedCircle
             width={40}
             height={40}
-            className="telegram-post-avatar me-3"
-            onError={(e) => { e.currentTarget.src = '/default-avatar.png'; }}
+            className="me-3"
+            onError={(e) => { (e.target as HTMLImageElement).src = '/default-avatar.png'; }}
           />
           <div>
-            <Card.Title className="telegram-post-username">{username || 'Unknown User'}</Card.Title>
-            <Card.Subtitle className="telegram-post-date">{formattedDate}</Card.Subtitle>
+            <Card.Title>{username || 'Unknown User'}</Card.Title>
+            <Card.Subtitle className="text-muted">{formattedDate}</Card.Subtitle>
           </div>
         </div>
         {isEditing ? (
@@ -376,8 +356,7 @@ export default function Post({
                 rows={4}
                 value={editContent}
                 onChange={(e) => setEditContent(e.target.value)}
-                className="telegram-post-textarea mb-2"
-                placeholder="Введите текст поста с эмодзи..."
+                className="mb-2"
               />
               <div className="d-flex gap-2 mb-2">
                 <EmojiPicker onSelect={handleAddEmoji} />
@@ -395,9 +374,8 @@ export default function Post({
                 <Button
                   variant="outline-secondary"
                   onClick={() => document.getElementById(`edit-file-${postId}`)?.click()}
-                  style={{ padding: '2px 6px' }}
                 >
-                  <Paperclip size={18} />
+                  <Paperclip />
                 </Button>
               </div>
               {editImages.length > 0 && (
@@ -405,233 +383,113 @@ export default function Post({
                   <p>Выбранные файлы:</p>
                   <ul>
                     {editImages.map((file, index) => (
-                      <li key={index} className="text-muted">
-                        {file.name}
-                      </li>
+                      <li key={index}>{file.name}</li>
                     ))}
                   </ul>
                 </div>
               )}
             </Form.Group>
             <div className="d-flex gap-2">
-              <Button variant="primary" type="submit" className="telegram-post-button">
+              <Button variant="primary" type="submit">
                 Сохранить
               </Button>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setIsEditing(false);
-                  setEditContent(content);
-                  setEditImages([]);
-                }}
-                className="telegram-post-button-secondary"
-              >
+              <Button variant="secondary" onClick={() => setIsEditing(false)}>
                 Отмена
               </Button>
             </div>
           </Form>
         ) : (
           <>
-            <Card.Text className="telegram-post-content">{content}</Card.Text>
-            {images && images.length > 0 && (
-              <div className="mb-3 d-flex flex-wrap gap-2">
+            <Card.Text>{content}</Card.Text>
+            {images.length > 0 && (
+              <div className="mb-3">
                 {images.map((image, index) => (
-                  <Image key={index} src={image} thumbnail className="telegram-post-image" />
+                  <Image key={index} src={image} thumbnail className="me-2" style={{ maxWidth: '100px' }} />
                 ))}
               </div>
             )}
-            <div className="d-flex gap-3 align-items-center">
-              <div className="position-relative" onMouseEnter={() => setShowReactions(true)} onMouseLeave={() => setShowReactions(null)}>
+            <div className="d-flex gap-3 align-items-center mt-2">
+              <Button
+                variant={userLiked ? 'primary' : 'outline-primary'}
+                onClick={handleLike}
+                className="d-flex align-items-center"
+              >
+                <HandThumbsUp className="me-1" /> {likes.length}
+              </Button>
+              <div className="position-relative">
                 <Button
-                  variant={userLiked ? 'primary' : 'outline-primary'}
-                  onClick={handleLike}
-                  className="telegram-post-like-button"
+                  variant="outline-secondary"
+                  onClick={() => setShowReactions(true)}
+                  className="d-flex align-items-center"
                 >
-                  <HandThumbsUp className="me-1" /> Лайк ({likes.length})
+                  Реакции
                 </Button>
                 {showReactions === true && (
-                  <div className="reaction-menu position-absolute bg-light border rounded p-2" style={{ zIndex: 1000 }}>
+                  <div className="position-absolute bg-light border rounded p-2" style={{ zIndex: 1000 }}>
                     <ReactionPicker onSelect={handleReaction} />
                   </div>
                 )}
               </div>
-              {user && canDelete && (
+              {canEditDelete && (
                 <>
-                  <Button
-                    variant="outline-secondary"
-                    onClick={() => setIsEditing(true)}
-                    className="telegram-post-edit-button"
-                  >
-                    <PencilSquare className="me-1" /> Редактировать
+                  <Button variant="outline-secondary" onClick={() => setIsEditing(true)}>
+                    <PencilSquare /> Редактировать
                   </Button>
-                  <Button
-                    variant="outline-danger"
-                    onClick={handleDelete}
-                    className="telegram-post-delete-button"
-                  >
-                    <Trash className="me-1" /> Удалить
+                  <Button variant="outline-danger" onClick={handleDelete}>
+                    <Trash /> Удалить
                   </Button>
                 </>
               )}
             </div>
             {reactions.length > 0 && (
-              <ListGroup horizontal className="mt-2">
+              <div className="mt-2">
                 {reactions.map((r) => (
-                  <ListGroup.Item key={r.emoji} className="telegram-reaction-count">
-                    {r.emoji} {r.users.length}
-                  </ListGroup.Item>
+                  <span key={r.emoji} className="me-2">{r.emoji} ({r.users.length})</span>
                 ))}
-              </ListGroup>
+              </div>
             )}
             <Button
               variant="link"
               onClick={() => setShowComments(!showComments)}
               className="mt-2"
             >
-              {showComments ? 'Скрыть комментарии' : 'Показать комментарии'} ({comments.length})
+              {showComments ? 'Скрыть комментарии' : 'Показать комментарии'} ({commentsState.length})
             </Button>
             {showComments && (
               <div className="mt-2">
                 <ListGroup>
-                  {comments.map((comment) => (
-                    <ListGroup.Item
-                      key={comment._id}
-                      className="d-flex flex-column mb-3 p-3 border rounded"
-                    >
-                      {editingCommentId === comment._id ? (
-                        <Form
-                          onSubmit={(e) => { e.preventDefault(); handleSaveEditComment(comment._id); }}
-                          className="d-flex align-items-center"
-                        >
-                          <Form.Control
-                            type="text"
-                            value={editCommentContent}
-                            onChange={(e) => setEditCommentContent(e.target.value)}
-                            className="me-2"
-                            style={{ flex: 1 }}
-                          />
-                          <Button
-                            variant="success"
-                            onClick={() => handleSaveEditComment(comment._id)}
-                          >
-                            Сохранить
-                          </Button>
-                          <Button
-                            variant="secondary"
-                            onClick={() => setEditingCommentId(null)}
-                            className="ms-2"
-                          >
-                            Отмена
-                          </Button>
-                        </Form>
-                      ) : (
-                        <>
-                          <div className="d-flex align-items-center mb-2">
-                            <Image
-                              src={comment.userId.avatar && comment.userId.avatar.trim() && comment.userId.avatar !== '/default-avatar.png'
-                                ? comment.userId.avatar
-                                : '/default-avatar.png'}
-                              roundedCircle
-                              width={30}
-                              height={30}
-                              className="me-2"
-                              onError={(e) => { e.currentTarget.src = '/default-avatar.png'; }}
-                            />
-                            <div>
-                              <Card.Title className="telegram-post-username mb-0">
-                                {comment.userId.username || 'Unknown User'}
-                              </Card.Title>
-                              <Card.Subtitle className="telegram-post-date">
-                                {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
-                              </Card.Subtitle>
-                            </div>
-                          </div>
-                          <div className="mb-2">
-                            <Card.Text>{comment.content}</Card.Text>
-                            {comment.images && comment.images.length > 0 && (
-                              <div className="d-flex flex-wrap gap-2">
-                                {comment.images.map((image, index) => (
-                                  <Image key={index} src={image} thumbnail className="telegram-post-image" />
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          <div className="d-flex align-items-center justify-content-between">
-                            <div>
-                              <div
-                                className="position-relative"
-                                onMouseEnter={() => setShowReactions(comment._id)}
-                                onMouseLeave={() => setShowReactions(null)}
-                              >
-                                <Button
-                                  variant={comment.likes?.includes(user?.userId || '') ? 'primary' : 'outline-primary'}
-                                  onClick={() => handleCommentLike(comment._id)}
-                                  className="me-2"
-                                  size="sm"
-                                >
-                                  <HandThumbsUp className="me-1" /> {comment.likes?.length || 0}
-                                </Button>
-                                {showReactions === comment._id && (
-                                  <div
-                                    className="reaction-menu position-absolute bg-light border rounded p-2"
-                                    style={{ zIndex: 1000 }}
-                                  >
-                                    <ReactionPicker
-                                      onSelect={(emoji) => handleCommentReaction(comment._id, emoji)}
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                              {comment.reactions && comment.reactions.length > 0 && (
-                                <ListGroup horizontal className="mt-1">
-                                  {comment.reactions.map((r) => (
-                                    <ListGroup.Item key={r.emoji} className="telegram-reaction-count">
-                                      {r.emoji} {r.users.length}
-                                    </ListGroup.Item>
-                                  ))}
-                                </ListGroup>
-                              )}
-                            </div>
-                            {user && user.userId === comment.userId._id && (
-                              <div>
-                                <Button
-                                  variant="outline-secondary"
-                                  size="sm"
-                                  onClick={() => handleEditComment(comment._id, comment.content)}
-                                  className="me-2"
-                                >
-                                  <PencilSquare />
-                                </Button>
-                                <Button
-                                  variant="outline-danger"
-                                  size="sm"
-                                  onClick={() => handleDeleteComment(comment._id)}
-                                >
-                                  <Trash />
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-                        </>
-                      )}
+                  {commentsState.map((comment) => (
+                    <ListGroup.Item key={comment._id} className="mb-2">
+                      <Comment
+                        _id={comment._id}
+                        userId={comment.userId}
+                        content={comment.content}
+                        createdAt={comment.createdAt}
+                        likes={comment.likes}
+                        reactions={comment.reactions}
+                        images={comment.images}
+                        userAvatar={comment.userId.avatar}
+                        onCommentLike={handleCommentLike}
+                        onCommentReaction={handleCommentReaction}
+                        currentUserId={user?.userId}
+                        onCommentEdit={handleCommentEdit}
+                        onCommentDelete={handleCommentDelete}
+                      />
                     </ListGroup.Item>
                   ))}
                 </ListGroup>
                 <Form onSubmit={handleAddComment} className="mt-3">
-                  <Form.Group className="position-relative">
+                  <Form.Group>
                     <Form.Control
                       as="textarea"
-                      rows={4}
+                      rows={2}
                       value={newComment}
                       onChange={(e) => setNewComment(e.target.value)}
                       placeholder="Напишите комментарий..."
                       disabled={submittingComment}
                     />
-                    <div
-                      className="position-absolute"
-                      style={{ bottom: '10px', right: '10px', display: 'flex', alignItems: 'center', zIndex: 10 }}
-                    >
-                      <EmojiPicker onSelect={(emoji) => setNewComment((prev) => prev + emoji)} />
+                    <div className="d-flex gap-2 mt-2" style={{ position: 'relative', zIndex: 1001 }}>
+                      <EmojiPicker onSelect={handleAddCommentEmoji} />
                       <input
                         type="file"
                         accept="image/*"
@@ -646,10 +504,16 @@ export default function Post({
                       <Button
                         variant="outline-secondary"
                         onClick={() => document.getElementById(`comment-file-${postId}`)?.click()}
-                        style={{ padding: '2px 6px', marginLeft: '5px' }}
-                        disabled={submittingComment}
                       >
-                        <Paperclip size={18} />
+                        <Paperclip />
+                      </Button>
+                      <Button
+                        variant="primary"
+                        type="submit"
+                        disabled={submittingComment || !newComment.trim()}
+                        className="ms-2"
+                      >
+                        {submittingComment ? 'Отправка...' : 'Отправить'}
                       </Button>
                     </div>
                     {commentImages.length > 0 && (
@@ -657,22 +521,12 @@ export default function Post({
                         <p>Выбранные файлы:</p>
                         <ul>
                           {commentImages.map((file, index) => (
-                            <li key={index} className="text-muted">
-                              {file.name}
-                            </li>
+                            <li key={index}>{file.name}</li>
                           ))}
                         </ul>
                       </div>
                     )}
                   </Form.Group>
-                  <Button
-                    variant="primary"
-                    type="submit"
-                    disabled={submittingComment}
-                    className="mt-2"
-                  >
-                    {submittingComment ? 'Отправка...' : 'Отправить'}
-                  </Button>
                 </Form>
               </div>
             )}
