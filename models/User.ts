@@ -1,5 +1,6 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema, Document, Types } from 'mongoose';
 
+// Интерфейс пользователя
 interface IUser extends Document {
   username: string;
   name?: string;
@@ -9,9 +10,9 @@ interface IUser extends Document {
   interests: string[];
   avatar?: string;
   createdAt: Date;
-  posts?: mongoose.Types.ObjectId[];
-  following?: mongoose.Types.ObjectId[];
-  communities?: mongoose.Types.ObjectId[]; // Связь с сообществами
+  posts?: Types.ObjectId[];
+  following?: Types.ObjectId[];
+  communities?: Types.ObjectId[];
 }
 
 export interface LeanUser {
@@ -24,10 +25,13 @@ export interface LeanUser {
   interests?: string[];
   avatar?: string;
   createdAt?: Date;
-  posts?: any[];
+  posts?: string[];
   following?: { _id: string; username: string }[];
-  communities?: string[]; // Для lean-документов
+  communities?: string[];
 }
+
+// Экспортируем UserDocument как синоним IUser
+export type UserDocument = IUser;
 
 const UserSchema = new Schema<IUser>({
   username: { type: String, required: true, unique: true },
@@ -43,7 +47,7 @@ const UserSchema = new Schema<IUser>({
       message: 'Интересов не может быть больше 5',
     },
   }],
-  avatar: { type: String },
+  avatar: { type: String, default: '/default-avatar.png' },
   createdAt: { type: Date, default: Date.now },
   posts: [{ type: Schema.Types.ObjectId, ref: 'Post' }],
   following: [{ type: Schema.Types.ObjectId, ref: 'User' }],

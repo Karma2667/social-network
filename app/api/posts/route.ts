@@ -1,15 +1,20 @@
 import { NextResponse } from 'next/server';
 import { connectToDB } from '@/app/lib/mongoDB';
-import Post, { PostDocument } from '@/models/Post';
+import Post, { PostDocument, LeanPostDocument } from '@/models/Post';
 import Comment from '@/models/Comment';
-import User, { UserDocument } from '@/models/User'; // Импортируем UserDocument для типизации
-import mongoose, { Types, ObjectId } from 'mongoose';
+import User, { UserDocument } from '@/models/User';
+import mongoose, { Types, ObjectId, HydratedDocument } from 'mongoose';
+
+// Обновленный UserDocument с явным указанием _id
+interface UserDocumentWithId extends UserDocument {
+  _id: Types.ObjectId;
+}
 
 // Интерфейсы для данных ответа
 interface UserData {
   _id: string;
   username: string;
-  userAvatar?: string;
+  avatar?: string;
 }
 
 interface CommentData {
@@ -22,6 +27,20 @@ interface CommentData {
   reactions?: { emoji: string; users: string[] }[];
 }
 
+interface PopulatedPost extends Omit<PostDocument, 'userId' | 'comments'> {
+  _id: Types.ObjectId;
+  userId: HydratedDocument<UserDocumentWithId> | null;
+  comments: HydratedDocument<{
+    _id: Types.ObjectId;
+    userId: HydratedDocument<UserDocumentWithId> | null;
+    content: string;
+    createdAt: Date;
+    images?: string[];
+    likes?: Types.ObjectId[];
+    reactions?: { emoji: string; users: Types.ObjectId[] }[];
+  }>[];
+}
+
 interface PostData {
   _id: string;
   content: string;
@@ -29,7 +48,7 @@ interface PostData {
   userId: UserData;
   isCommunityPost?: boolean;
   createdAt: string;
-  likes: string[]; // Синхронизируем с моделью
+  likes: string[];
   reactions: { emoji: string; users: string[] }[];
   images: string[];
   comments: CommentData[];
@@ -60,7 +79,7 @@ export async function GET(request: Request) {
       .populate({
         path: 'userId',
         model: User,
-        select: 'username userAvatar _id',
+        select: 'username avatar _id',
       })
       .populate({
         path: 'comments',
@@ -68,14 +87,14 @@ export async function GET(request: Request) {
         populate: {
           path: 'userId',
           model: User,
-          select: 'username _id',
+          select: 'username _id avatar',
         },
       });
 
     console.log('GET /api/posts: Инициализирован запрос к коллекции Post с фильтром по userId и isCommunityPost');
     console.log('GET /api/posts: Установлена популяция для userId и комментариев');
 
-    const posts = await postsQuery;
+    const posts = await postsQuery as PopulatedPost[];
     console.log('GET /api/posts: Получено записей из базы:', posts.length);
 
     if (!posts || posts.length === 0) {
@@ -83,31 +102,35 @@ export async function GET(request: Request) {
       return NextResponse.json({ message: 'Посты не найдены' }, { status: 200 });
     }
 
-    const formattedPosts: PostData[] = posts.map((post: PostDocument) => {
+    const formattedPosts: PostData[] = posts.map((post: PopulatedPost) => {
       console.log('GET /api/posts: Форматирование поста с _id:', post._id.toString());
       const userData: UserData = post.userId
         ? {
-            _id: (post.userId as UserDocument)._id.toString(),
-            username: (post.userId as UserDocument).username || 'Unknown User',
-            userAvatar: (post.userId as UserDocument).userAvatar || '/default-avatar.png',
+            _id: post.userId._id.toString(),
+            username: post.userId.username || 'Unknown User',
+            avatar: post.userId.avatar || undefined,
           }
-        : { _id: '', username: 'Unknown User', userAvatar: '/default-avatar.png' };
+        : { _id: '', username: 'Unknown User', avatar: undefined };
 
-      const comments: CommentData[] = (post.comments as any[]).map((comment: any) => {
-        const commentUser = comment.userId as UserDocument | undefined;
+      const comments: CommentData[] = post.comments.map((comment) => {
+        const commentUser = comment.userId;
         return {
           _id: comment._id.toString(),
           userId: commentUser
             ? {
                 _id: commentUser._id.toString(),
                 username: commentUser.username || 'Unknown User',
+                avatar: commentUser.avatar || undefined,
               }
-            : { _id: '', username: 'Unknown User' },
+            : { _id: '', username: 'Unknown User', avatar: undefined },
           content: comment.content || '',
           createdAt: new Date(comment.createdAt).toISOString(),
           images: comment.images || [],
-          likes: comment.likes?.map((id: ObjectId) => id.toString()) || [],
-          reactions: comment.reactions || [],
+          likes: comment.likes?.map((id: Types.ObjectId) => id.toString()) || [],
+          reactions: comment.reactions?.map((r: { emoji: string; users: Types.ObjectId[] }) => ({
+            emoji: r.emoji,
+            users: r.users.map((u: Types.ObjectId) => u.toString()),
+          })) || [],
         };
       });
 
@@ -118,8 +141,11 @@ export async function GET(request: Request) {
         userId: userData,
         isCommunityPost: post.isCommunityPost || false,
         createdAt: new Date(post.createdAt).toISOString(),
-        likes: post.likes || [],
-        reactions: post.reactions || [],
+        likes: post.likes.map((id: Types.ObjectId) => id.toString()) || [],
+        reactions: post.reactions.map((r: { emoji: string; users: Types.ObjectId[] }) => ({
+          emoji: r.emoji,
+          users: r.users.map((u: Types.ObjectId) => u.toString()),
+        })) || [],
         images: post.images || [],
         comments,
       };
@@ -203,7 +229,7 @@ export async function POST(request: Request) {
     const post = await Post.create(postData);
     console.log('POST /api/posts: Пост успешно создан с _id:', post._id);
 
-    const user = await User.findById(userId).select('username userAvatar');
+    const user = await User.findById(userId).select('username avatar');
     const responseData: PostData = {
       _id: post._id.toString(),
       content: post.content,
@@ -211,13 +237,16 @@ export async function POST(request: Request) {
         ? {
             _id: user._id.toString(),
             username: user.username || 'Unknown User',
-            userAvatar: user.userAvatar || '/default-avatar.png',
+            avatar: user.avatar || undefined,
           }
-        : { _id: userId, username: 'Unknown User', userAvatar: '/default-avatar.png' },
+        : { _id: userId, username: 'Unknown User', avatar: undefined },
       isCommunityPost: false,
       createdAt: post.createdAt.toISOString(),
-      likes: post.likes || [],
-      reactions: post.reactions || [],
+      likes: post.likes.map((id: Types.ObjectId) => id.toString()) || [],
+      reactions: post.reactions.map((r: { emoji: string; users: Types.ObjectId[] }) => ({
+        emoji: r.emoji,
+        users: r.users.map((u: Types.ObjectId) => u.toString()),
+      })) || [],
       images: post.images || [],
       comments: [],
     };
@@ -258,7 +287,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ error: 'Требуется content' }, { status: 400 });
     }
 
-    const post = await Post.findById(params.id).lean() as Partial<PostDocument> | null;
+    const post = await Post.findById(params.id).lean() as LeanPostDocument | null;
     console.log('PUT /api/posts/[id]: Результат поиска поста:', { postId: params.id, postExists: !!post });
 
     if (!post) {
@@ -284,25 +313,50 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       params.id,
       { content, images, updatedAt: new Date() },
       { new: true, runValidators: true }
-    ).populate('userId', 'username userAvatar _id');
+    ).populate('userId', 'username avatar _id') as PopulatedPost;
+
+    const comments: CommentData[] = updatedPost.comments.map((comment) => {
+      const commentUser = comment.userId;
+      return {
+        _id: comment._id.toString(),
+        userId: commentUser
+          ? {
+              _id: commentUser._id.toString(),
+              username: commentUser.username || 'Unknown User',
+              avatar: commentUser.avatar || undefined,
+            }
+          : { _id: '', username: 'Unknown User', avatar: undefined },
+        content: comment.content || '',
+        createdAt: new Date(comment.createdAt).toISOString(),
+        images: comment.images || [],
+        likes: comment.likes?.map((id: Types.ObjectId) => id.toString()) || [],
+        reactions: comment.reactions?.map((r: { emoji: string; users: Types.ObjectId[] }) => ({
+          emoji: r.emoji,
+          users: r.users.map((u: Types.ObjectId) => u.toString()),
+        })) || [],
+      };
+    });
 
     const responseData: PostData = {
       _id: updatedPost._id.toString(),
       content: updatedPost.content,
       userId: updatedPost.userId
         ? {
-            _id: (updatedPost.userId as UserDocument)._id.toString(),
-            username: (updatedPost.userId as UserDocument).username || 'Unknown User',
-            userAvatar: (updatedPost.userId as UserDocument).userAvatar || '/default-avatar.png',
+            _id: updatedPost.userId._id.toString(),
+            username: updatedPost.userId.username || 'Unknown User',
+            avatar: updatedPost.userId.avatar || undefined,
           }
-        : { _id: '', username: 'Unknown User', userAvatar: '/default-avatar.png' },
+        : { _id: '', username: 'Unknown User', avatar: undefined },
       communityId: updatedPost.community?.toString(),
       isCommunityPost: updatedPost.isCommunityPost || false,
       createdAt: updatedPost.createdAt.toISOString(),
-      likes: updatedPost.likes || [],
-      reactions: updatedPost.reactions || [],
+      likes: updatedPost.likes.map((id: Types.ObjectId) => id.toString()) || [],
+      reactions: updatedPost.reactions.map((r: { emoji: string; users: Types.ObjectId[] }) => ({
+        emoji: r.emoji,
+        users: r.users.map((u: Types.ObjectId) => u.toString()),
+      })) || [],
       images: updatedPost.images || [],
-      comments: updatedPost.comments || [],
+      comments,
     };
 
     console.log('PUT /api/posts/[id]: Форматированные данные ответа:', responseData);
@@ -333,7 +387,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
       return NextResponse.json({ error: 'Требуется userId' }, { status: 400 });
     }
 
-    const post = await Post.findById(params.id).lean() as Partial<PostDocument> | null;
+    const post = await Post.findById(params.id).lean() as LeanPostDocument | null;
     console.log('DELETE /api/posts/[id]: Результат поиска поста:', { postId: params.id, postExists: !!post });
 
     if (!post) {

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import Session from '@/models/Session';
+import bcrypt from 'bcryptjs'; // Добавьте bcrypt для проверки (если используется)
 
 // Define interfaces for lean documents
 interface LeanSession {
@@ -14,7 +15,8 @@ interface LeanSession {
 interface LeanUser {
   _id: string;
   username: string;
-  avatar?: string; // Добавляем поддержку avatar
+  avatar?: string;
+  password?: string; // Добавим для отладки (убрать в продакшене)
   __v?: number;
 }
 
@@ -36,22 +38,26 @@ export async function GET(request: Request) {
 
     const session = await Session.findOne({ token }).lean<LeanSession>();
     if (!session) {
-      console.log('GET /api/auth/me: Сессия не найдена');
+      console.log('GET /api/auth/me: Сессия не найдена для токена:', token);
       return NextResponse.json({ error: 'Неверный токен' }, { status: 401 });
     }
 
-    const user = await User.findById(session.userId).select('username avatar').lean<LeanUser>(); // Добавляем avatar
+    const user = await User.findById(session.userId).select('username avatar').lean<LeanUser>();
     if (!user) {
-      console.log('GET /api/auth/me: Пользователь не найден');
+      console.log('GET /api/auth/me: Пользователь не найден для userId:', session.userId);
       return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 });
     }
 
-    console.log('GET /api/auth/me: Пользователь найден:', { userId: session.userId, username: user.username, avatar: user.avatar });
+    console.log('GET /api/auth/me: Пользователь найден:', {
+      userId: session.userId,
+      username: user.username,
+      avatar: user.avatar,
+    });
     console.timeEnd('GET /api/auth/me: Total');
     return NextResponse.json({
       userId: session.userId,
       username: user.username,
-      avatar: user.avatar || '/default-avatar.png', // Возвращаем avatar или заглушку
+      avatar: user.avatar || '/default-avatar.png',
     }, { status: 200 });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';

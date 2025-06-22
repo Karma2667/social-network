@@ -1,7 +1,23 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
+// Определение модели Comment
+interface IComment extends Document {
+  userId: Types.ObjectId;
+  content: string;
+  createdAt: Date;
+  images?: string[];
+  likes?: Types.ObjectId[];
+  reactions?: { emoji: string; users: Types.ObjectId[] }[];
+}
+
+export interface UserDocument extends Document {
+  _id: Types.ObjectId;
+  username: string;
+  avatar?: string;
+}
+
 export interface PostDocument extends Document {
-  userId: Types.ObjectId | null;
+  userId: UserDocument | Types.ObjectId | null;
   community: Types.ObjectId | null;
   isCommunityPost: boolean;
   content: string;
@@ -10,7 +26,29 @@ export interface PostDocument extends Document {
   likes: Types.ObjectId[];
   reactions: { emoji: string; users: Types.ObjectId[] }[];
   images: string[];
-  comments: Types.ObjectId[];
+  comments: Types.ObjectId[]; // Ссылка на коллекцию Comment
+}
+
+export interface LeanPostDocument {
+  _id: string;
+  userId?: { _id: string; username: string; avatar?: string } | string | null;
+  community?: string | null;
+  isCommunityPost: boolean;
+  content: string;
+  createdAt: Date;
+  updatedAt?: Date;
+  likes: string[];
+  reactions: { emoji: string; users: string[] }[];
+  images: string[];
+  comments?: {
+    _id: string;
+    userId: { _id: string; username: string; avatar?: string } | string;
+    content: string;
+    createdAt: string;
+    images?: string[];
+    likes?: string[];
+    reactions?: { emoji: string; users: string[] }[];
+  }[];
 }
 
 const PostSchema = new mongoose.Schema<PostDocument>(
@@ -30,3 +68,15 @@ const PostSchema = new mongoose.Schema<PostDocument>(
 );
 
 export default mongoose.models.Post || mongoose.model<PostDocument>('Post', PostSchema);
+
+// Опционально: Добавление модели Comment (если еще не существует)
+const CommentSchema = new mongoose.Schema<IComment>({
+  userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  content: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now },
+  images: [{ type: String, default: [] }],
+  likes: [{ type: Schema.Types.ObjectId, ref: 'User', default: [] }],
+  reactions: [{ emoji: String, users: [{ type: Schema.Types.ObjectId, ref: 'User' }], default: [] }],
+});
+
+export const CommentModel = mongoose.models.Comment || mongoose.model<IComment>('Comment', CommentSchema);

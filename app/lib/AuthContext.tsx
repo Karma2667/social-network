@@ -5,14 +5,14 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 interface User {
   userId: string;
   username: string;
-  avatar?: string; // Добавляем поле avatar
+  avatar?: string;
 }
 
 interface AuthContextType {
   user: User | null;
   userId: string | null;
   username: string | null;
-  avatar: string | null; // Добавляем для удобства доступа
+  avatar: string | null;
   isInitialized: boolean;
   logout: () => void;
 }
@@ -56,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } finally {
         if (isMounted) {
           setIsInitialized(true);
+          console.log('AuthProvider: Инициализация завершена, user:', user, 'isInitialized:', isInitialized);
         }
       }
     };
@@ -67,16 +68,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  useEffect(() => {
-    if (isInitialized) {
-      console.log('AuthProvider: Инициализация завершена, user:', user, 'isInitialized:', isInitialized);
-    }
-  }, [user, isInitialized]);
-
   const logout = () => {
     setUser(null);
     localStorage.removeItem('authToken');
     localStorage.removeItem('username');
+    console.log('AuthProvider: Выход выполнен');
   };
 
   return (
@@ -84,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user, 
       userId: user?.userId || null, 
       username: user?.username || null, 
-      avatar: user?.avatar || null, // Добавляем доступ к avatar
+      avatar: user?.avatar || null,
       isInitialized, 
       logout 
     }}>
