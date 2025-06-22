@@ -1,17 +1,15 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/app/lib/mongoDB';
+import { connectToDB } from '@/app/lib/mongoDB'; // Исправленный импорт
 import Community from '@/models/Community';
 
 export async function DELETE(request: Request) {
   try {
-    await dbConnect();
+    await connectToDB();
     const userId = request.headers.get('x-user-id');
     if (!userId) {
       return NextResponse.json({ error: 'Требуется userId' }, { status: 401 });
     }
 
-    // Проверка прав (например, только администратор может удалить все сообщества)
-    // Здесь можно добавить логику проверки роли пользователя
     const deletedCount = await Community.deleteMany({});
     console.log(`DELETE /api/communities/clear: Удалено сообществ: ${deletedCount.deletedCount}`);
 

@@ -69,7 +69,7 @@ const PostSchema = new mongoose.Schema<PostDocument>(
 
 export default mongoose.models.Post || mongoose.model<PostDocument>('Post', PostSchema);
 
-// Опционально: Добавление модели Comment (если еще не существует)
+// Опционально: Добавление модели Comment
 const CommentSchema = new mongoose.Schema<IComment>({
   userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   content: { type: String, required: true },

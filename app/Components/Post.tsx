@@ -35,6 +35,8 @@ interface PostProps {
   onDelete: (postId: string) => Promise<void>;
   currentUserId?: string;
   isAdmin?: boolean;
+  isCommunityPost?: boolean; // Added to fix TypeScript error
+  communityId?: string;
 }
 
 export default function Post({
@@ -52,6 +54,8 @@ export default function Post({
   onDelete,
   currentUserId,
   isAdmin = false,
+  isCommunityPost = false,
+  communityId,
 }: PostProps) {
   const { user, avatar } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
@@ -191,11 +195,7 @@ export default function Post({
       const userAvatar = avatar || '/default-avatar.png';
       const newCommentObj: CommentProps = {
         _id: responseData._id,
-        userId: { 
-          _id: user.userId, 
-          username: user.username || 'Unknown', 
-          avatar: userAvatar 
-        },
+        userId: { _id: user.userId, username: user.username || 'Unknown', avatar: userAvatar },
         content: responseData.content,
         createdAt: responseData.createdAt,
         likes: responseData.likes || [],

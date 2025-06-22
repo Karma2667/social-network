@@ -54,7 +54,7 @@ interface PostData {
   comments: CommentData[];
 }
 
-// GET метод для получения постов пользователя
+// GET метод для получения постов
 export async function GET(request: Request) {
   console.time('GET /api/posts: Total');
   console.log('GET /api/posts: Запрос получен, URL:', request.url);
@@ -71,9 +71,12 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Требуется userId' }, { status: 400 });
     }
 
+    const url = new URL(request.url);
+    const communityId = url.searchParams.get('communityId');
+
     const postsQuery = Post.find({
-      userId: new Types.ObjectId(userId),
-      isCommunityPost: false,
+      ...(communityId && { community: new Types.ObjectId(communityId), isCommunityPost: true }),
+      ...(!communityId && { userId: new Types.ObjectId(userId), isCommunityPost: false }),
     })
       .sort({ createdAt: -1 })
       .populate({
@@ -91,7 +94,7 @@ export async function GET(request: Request) {
         },
       });
 
-    console.log('GET /api/posts: Инициализирован запрос к коллекции Post с фильтром по userId и isCommunityPost');
+    console.log('GET /api/posts: Инициализирован запрос к коллекции Post с фильтром по', { communityId, userId });
     console.log('GET /api/posts: Установлена популяция для userId и комментариев');
 
     const posts = await postsQuery as PopulatedPost[];
@@ -183,17 +186,18 @@ export async function POST(request: Request) {
     const content = formData.get('content') as string | null;
     const files = formData.getAll('images') as File[];
     const isCommunityPost = formData.get('isCommunityPost') === 'true';
+    const communityId = formData.get('communityId') as string | null;
 
-    console.log('POST /api/posts: Полученные данные:', { userId, content, isCommunityPost, filesLength: files.length });
+    console.log('POST /api/posts: Полученные данные:', { userId, content, isCommunityPost, communityId, filesLength: files.length });
 
     if (!content || typeof content !== 'string') {
       console.log('POST /api/posts: Валидация данных провалена: отсутствуют content');
       return NextResponse.json({ error: 'Требуется content' }, { status: 400 });
     }
 
-    if (isCommunityPost) {
-      console.log('POST /api/posts: Создание поста сообщества запрещено для личного профиля');
-      return NextResponse.json({ error: 'Создание постов сообщества недоступно на этой странице' }, { status: 403 });
+    if (isCommunityPost && !communityId) {
+      console.log('POST /api/posts: Требуется communityId для поста сообщества');
+      return NextResponse.json({ error: 'Требуется communityId для поста сообщества' }, { status: 400 });
     }
 
     let images: string[] = [];
@@ -217,12 +221,21 @@ export async function POST(request: Request) {
       console.log('POST /api/posts: Изображения успешно загружены:', images);
     }
 
+    if (isCommunityPost) {
+      const community = await mongoose.model('Community').findById(communityId);
+      if (!community || !community.admins.includes(userId)) {
+        console.log('POST /api/posts: Недостаточно прав для создания поста сообщества');
+        return NextResponse.json({ error: 'Создание постов сообщества доступно только администраторам' }, { status: 403 });
+      }
+    }
+
     const postData = {
       userId: new Types.ObjectId(userId),
       content,
       images,
       comments: [],
-      isCommunityPost: false,
+      isCommunityPost: isCommunityPost || false,
+      ...(communityId && { community: new Types.ObjectId(communityId) }),
     };
 
     console.log('POST /api/posts: Данные для создания поста:', JSON.stringify(postData, null, 2));
@@ -240,7 +253,8 @@ export async function POST(request: Request) {
             avatar: user.avatar || undefined,
           }
         : { _id: userId, username: 'Unknown User', avatar: undefined },
-      isCommunityPost: false,
+      communityId: post.community?.toString(),
+      isCommunityPost: post.isCommunityPost || false,
       createdAt: post.createdAt.toISOString(),
       likes: post.likes.map((id: Types.ObjectId) => id.toString()) || [],
       reactions: post.reactions.map((r: { emoji: string; users: Types.ObjectId[] }) => ({
@@ -397,6 +411,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
 
     const isAuthor = post.userId?.toString() === userId;
     let isCommunityAdmin = false;
+
     if (post.community) {
       const community = await mongoose.model('Community').findById(post.community).select('creator admins');
       console.log('DELETE /api/posts/[id]: Проверка прав сообщества:', { communityId: post.community, creator: community?.creator, admins: community?.admins });
@@ -409,17 +424,29 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
       return NextResponse.json({ error: 'Недостаточно прав для удаления поста' }, { status: 403 });
     }
 
-    const deleteResult = await Post.deleteOne({ _id: params.id });
-    console.log('DELETE /api/posts/[id]: Результат удаления:', { deletedCount: deleteResult.deletedCount });
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
-    if (deleteResult.deletedCount === 0) {
-      console.log('DELETE /api/posts/[id]: Пост не был удален (возможно, уже удален)');
-      return NextResponse.json({ error: 'Пост не найден для удаления' }, { status: 404 });
+    try {
+      const deleteResult = await Post.deleteOne({ _id: params.id }).session(session);
+      console.log('DELETE /api/posts/[id]: Результат удаления:', { deletedCount: deleteResult.deletedCount });
+
+      if (deleteResult.deletedCount === 0) {
+        await session.abortTransaction();
+        console.log('DELETE /api/posts/[id]: Пост не был удален (возможно, уже удален)');
+        return NextResponse.json({ error: 'Пост не найден для удаления' }, { status: 404 });
+      }
+
+      await session.commitTransaction();
+      console.log('DELETE /api/posts/[id]: Пост успешно удалён, id:', params.id);
+      console.timeEnd('DELETE /api/posts/[id]: Total');
+      return NextResponse.json({ message: 'Пост удалён' }, { status: 200 });
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
     }
-
-    console.log('DELETE /api/posts/[id]: Пост успешно удалён, id:', params.id);
-    console.timeEnd('DELETE /api/posts/[id]: Total');
-    return NextResponse.json({ message: 'Пост удалён' }, { status: 200 });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
     console.error('DELETE /api/posts/[id]: Ошибка на этапе выполнения:', errorMessage, 'Полная ошибка:', error);

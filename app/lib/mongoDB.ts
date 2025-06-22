@@ -61,4 +61,4 @@ const connectToDB = async (): Promise<Mongoose> => {
   }
 };
 
-export { mongoose, connectToDB };
+export { connectToDB }; // Экспортируем connectToDB

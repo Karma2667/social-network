@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
+import { connectToDB } from '@/app/lib/mongoDB';
 import Community from '@/models/Community';
 import User from '@/models/User';
 import mongoose from 'mongoose';
+import Post from '@/models/Post'; // Добавлен импорт модели Post
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
-  await dbConnect();
+  await connectToDB();
   const params = await context.params;
   const { id } = params;
   const userId = request.headers.get('x-user-id');
@@ -35,7 +36,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
-  await dbConnect();
+  await connectToDB();
   const params = await context.params;
   const { id } = params;
   const userId = request.headers.get('x-user-id');
@@ -65,7 +66,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         community.members.push(userId);
         user.communities.push(community._id);
         await community.save({ session });
-        await user.save({ session, validateModifiedOnly: true, runValidators: false }); // Отключаем валидацию
+        await user.save({ session, validateModifiedOnly: true, runValidators: false });
         await session.commitTransaction();
         console.log(`POST /api/communities/${id}/subscribe: Пользователь ${userId} подписался на сообщество ${id}`);
         return NextResponse.json({ message: 'Вы успешно подписались на сообщество' }, { status: 200 });
@@ -87,12 +88,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 }
 
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
-  await dbConnect();
+  await connectToDB();
   const params = await context.params;
   const { id } = params;
   const userId = request.headers.get('x-user-id');
 
+  console.log('DELETE /api/communities/[id]: Запрос получен, id:', id, 'userId:', userId);
+
   if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+    console.log('DELETE /api/communities/[id]: Неверный или отсутствует userId');
     return NextResponse.json({ error: 'Неверный или отсутствует userId' }, { status: 400 });
   }
 
@@ -104,36 +108,34 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
       const community = await Community.findById(id).session(session);
       if (!community) {
         await session.abortTransaction();
+        console.log('DELETE /api/communities/[id]: Сообщество не найдено');
         return NextResponse.json({ error: 'Сообщество не найдено' }, { status: 404 });
       }
 
-      const user = await User.findById(userId).session(session);
-      if (!user) {
+      console.log('DELETE /api/communities/[id]: Проверка прав - userId:', userId, 'creator:', community.creator, 'admins:', community.admins);
+      if (community.creator.toString() !== userId && !community.admins.includes(userId)) {
         await session.abortTransaction();
-        return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 });
+        console.log('DELETE /api/communities/[id]: Недостаточно прав для удаления');
+        return NextResponse.json({ error: 'Только создатель или администратор может удалить сообщество' }, { status: 403 });
       }
 
-      if (community.members.includes(userId)) {
-        community.members = community.members.filter((member: mongoose.Types.ObjectId | string) => member.toString() !== userId);
-        user.communities = user.communities.filter((communityId: mongoose.Types.ObjectId) => communityId.toString() !== id);
-        await community.save({ session });
-        await user.save({ session, validateModifiedOnly: true, runValidators: false }); // Отключаем валидацию
-        await session.commitTransaction();
-        console.log(`DELETE /api/communities/${id}/subscribe: Пользователь ${userId} отписался от сообщества ${id}`);
-        return NextResponse.json({ message: 'Вы успешно отписались от сообщества' }, { status: 200 });
-      } else {
-        await session.abortTransaction();
-        return NextResponse.json({ message: 'Вы не подписаны на это сообщество' }, { status: 400 });
-      }
+      // Удаление связанных постов
+      await Post.deleteMany({ community: id }).session(session);
+
+      await Community.deleteOne({ _id: id }).session(session);
+      await session.commitTransaction();
+      console.log('DELETE /api/communities/[id]: Сообщество успешно удалено, id:', id);
+      return NextResponse.json({ message: 'Сообщество успешно удалено' }, { status: 200 });
     } catch (error) {
       await session.abortTransaction();
+      console.log('DELETE /api/communities/[id]: Ошибка транзакции:', error);
       throw error;
     } finally {
       session.endSession();
     }
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-    console.error(`DELETE /api/communities/${id}/subscribe ошибка:`, error);
-    return NextResponse.json({ error: 'Не удалось отписаться от сообщества', details: errorMessage }, { status: 500 });
+    console.error('DELETE /api/communities/[id]: Ошибка на этапе выполнения:', errorMessage, 'Полная ошибка:', error);
+    return NextResponse.json({ error: 'Не удалось удалить сообщество', details: errorMessage }, { status: 500 });
   }
 }

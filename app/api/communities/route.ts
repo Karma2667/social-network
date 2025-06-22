@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
+import { connectToDB } from '@/app/lib/mongoDB'; // Исправленный импорт
 import Community from '@/models/Community';
 import mongoose from 'mongoose';
 import { promises as fs } from 'fs';
@@ -14,7 +14,7 @@ export const config = {
 export async function GET() {
   try {
     console.log('GET /api/communities: Подключение к MongoDB...');
-    await dbConnect();
+    await connectToDB();
     console.log('GET /api/communities: MongoDB подключен');
 
     const communities = await Community.find({})
@@ -32,7 +32,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     console.log('POST /api/communities: Подключение к MongoDB...');
-    await dbConnect();
+    await connectToDB();
     console.log('POST /api/communities: MongoDB подключен');
 
     const formData = await request.formData();
