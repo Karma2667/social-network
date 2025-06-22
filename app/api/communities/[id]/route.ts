@@ -3,7 +3,7 @@ import { connectToDB } from '@/app/lib/mongoDB';
 import Community from '@/models/Community';
 import User from '@/models/User';
 import mongoose from 'mongoose';
-import Post from '@/models/Post'; // Добавлен импорт модели Post
+import Post from '@/models/Post'; // Импорт модели Post
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   await connectToDB();
@@ -46,39 +46,25 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
 
   try {
-    const session = await mongoose.startSession();
-    session.startTransaction();
+    const community = await Community.findById(id);
+    if (!community) {
+      return NextResponse.json({ error: 'Сообщество не найдено' }, { status: 404 });
+    }
 
-    try {
-      const community = await Community.findById(id).session(session);
-      if (!community) {
-        await session.abortTransaction();
-        return NextResponse.json({ error: 'Сообщество не найдено' }, { status: 404 });
-      }
+    const user = await User.findById(userId);
+    if (!user) {
+      return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 });
+    }
 
-      const user = await User.findById(userId).session(session);
-      if (!user) {
-        await session.abortTransaction();
-        return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 });
-      }
-
-      if (!community.members.includes(userId)) {
-        community.members.push(userId);
-        user.communities.push(community._id);
-        await community.save({ session });
-        await user.save({ session, validateModifiedOnly: true, runValidators: false });
-        await session.commitTransaction();
-        console.log(`POST /api/communities/${id}/subscribe: Пользователь ${userId} подписался на сообщество ${id}`);
-        return NextResponse.json({ message: 'Вы успешно подписались на сообщество' }, { status: 200 });
-      } else {
-        await session.abortTransaction();
-        return NextResponse.json({ message: 'Вы уже подписаны на это сообщество' }, { status: 400 });
-      }
-    } catch (error) {
-      await session.abortTransaction();
-      throw error;
-    } finally {
-      session.endSession();
+    if (!community.members.includes(userId)) {
+      community.members.push(userId);
+      user.communities.push(community._id);
+      await community.save();
+      await user.save({ validateModifiedOnly: true, runValidators: false });
+      console.log(`POST /api/communities/${id}/subscribe: Пользователь ${userId} подписался на сообщество ${id}`);
+      return NextResponse.json({ message: 'Вы успешно подписались на сообщество' }, { status: 200 });
+    } else {
+      return NextResponse.json({ message: 'Вы уже подписаны на это сообщество' }, { status: 400 });
     }
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
@@ -101,38 +87,24 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
   }
 
   try {
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
-    try {
-      const community = await Community.findById(id).session(session);
-      if (!community) {
-        await session.abortTransaction();
-        console.log('DELETE /api/communities/[id]: Сообщество не найдено');
-        return NextResponse.json({ error: 'Сообщество не найдено' }, { status: 404 });
-      }
-
-      console.log('DELETE /api/communities/[id]: Проверка прав - userId:', userId, 'creator:', community.creator, 'admins:', community.admins);
-      if (community.creator.toString() !== userId && !community.admins.includes(userId)) {
-        await session.abortTransaction();
-        console.log('DELETE /api/communities/[id]: Недостаточно прав для удаления');
-        return NextResponse.json({ error: 'Только создатель или администратор может удалить сообщество' }, { status: 403 });
-      }
-
-      // Удаление связанных постов
-      await Post.deleteMany({ community: id }).session(session);
-
-      await Community.deleteOne({ _id: id }).session(session);
-      await session.commitTransaction();
-      console.log('DELETE /api/communities/[id]: Сообщество успешно удалено, id:', id);
-      return NextResponse.json({ message: 'Сообщество успешно удалено' }, { status: 200 });
-    } catch (error) {
-      await session.abortTransaction();
-      console.log('DELETE /api/communities/[id]: Ошибка транзакции:', error);
-      throw error;
-    } finally {
-      session.endSession();
+    const community = await Community.findById(id);
+    if (!community) {
+      console.log('DELETE /api/communities/[id]: Сообщество не найдено');
+      return NextResponse.json({ error: 'Сообщество не найдено' }, { status: 404 });
     }
+
+    console.log('DELETE /api/communities/[id]: Проверка прав - userId:', userId, 'creator:', community.creator, 'admins:', community.admins);
+    if (community.creator.toString() !== userId && !community.admins.includes(userId)) {
+      console.log('DELETE /api/communities/[id]: Недостаточно прав для удаления');
+      return NextResponse.json({ error: 'Только создатель или администратор может удалить сообщество' }, { status: 403 });
+    }
+
+    // Удаление связанных постов
+    await Post.deleteMany({ community: id });
+
+    await Community.deleteOne({ _id: id });
+    console.log('DELETE /api/communities/[id]: Сообщество успешно удалено, id:', id);
+    return NextResponse.json({ message: 'Сообщество успешно удалено' }, { status: 200 });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
     console.error('DELETE /api/communities/[id]: Ошибка на этапе выполнения:', errorMessage, 'Полная ошибка:', error);
