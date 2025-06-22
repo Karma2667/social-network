@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
 import Post from '@/models/Post';
-import mongoose, { Types } from 'mongoose';
-import { connectToDB } from '@/app/lib/mongoDB';
-import dbConnect from '@/lib/mongodb';
+import { connectToDB, mongoose } from '@/app/lib/mongoDB';
 
 // Интерфейс для реакции
 interface Reaction {
@@ -12,7 +10,7 @@ interface Reaction {
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   try {
-    await dbConnect();
+    await connectToDB();
     const { userId } = await request.json();
 
     if (!mongoose.Types.ObjectId.isValid(params.id) || !mongoose.Types.ObjectId.isValid(userId)) {
@@ -30,13 +28,13 @@ export async function POST(request: Request, { params }: { params: { id: string 
       return NextResponse.json({ error: 'Пост не найден' }, { status: 404 });
     }
 
-    post.reactions = post.reactions || [];
     post.likes = post.likes || [];
+    post.reactions = post.reactions || [];
 
     const wasLiked = post.likes.includes(userId);
     if (wasLiked) {
       post.likes = post.likes.filter((id: string) => id !== userId);
-      // Удаляем реакцию "👍", если она была связана с этим лайком
+      // Удаляем реакцию "👍", если она была
       const thumbsUpReaction = post.reactions.find((r: Reaction) => r.emoji === '👍' && r.users.includes(userId));
       if (thumbsUpReaction) {
         thumbsUpReaction.users = thumbsUpReaction.users.filter((id: string) => id !== userId);
@@ -46,7 +44,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       }
     } else {
       post.likes.push(userId);
-      // Добавляем реакцию "👍", если её ещё нет
+      // Добавляем реакцию "👍", если её нет
       if (!post.reactions.some((r: Reaction) => r.emoji === '👍' && r.users.includes(userId))) {
         const reactionIndex = post.reactions.findIndex((r: Reaction) => r.emoji === '👍');
         if (reactionIndex === -1) {
