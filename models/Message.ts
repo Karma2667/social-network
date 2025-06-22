@@ -11,12 +11,13 @@ interface IMessage extends Document {
   senderId: string;
   recipientId: string;
   content: string;
+  encryptedContent: string;
   createdAt: Date;
   isRead: boolean;
   readBy: string[];
   editedAt?: Date;
-  reactions?: Reaction[]; // Поле для реакций
-  replyTo?: string; // Добавляем поле для ссылки на исходное сообщение
+  reactions?: Reaction[];
+  replyTo?: string;
   __v?: number;
 }
 
@@ -26,12 +27,13 @@ export interface LeanMessage {
   senderId: string;
   recipientId: string;
   content: string;
+  encryptedContent: string;
   createdAt: Date;
   isRead: boolean;
   readBy: string[];
   editedAt?: Date;
-  reactions?: Reaction[]; // Поле для реакций
-  replyTo?: string; // Добавляем в lean-версию
+  reactions?: Reaction[];
+  replyTo?: string;
   __v?: number;
 }
 
@@ -39,12 +41,13 @@ const MessageSchema = new Schema<IMessage>({
   senderId: { type: String, required: true },
   recipientId: { type: String, required: true },
   content: { type: String, required: true },
+  encryptedContent: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
   isRead: { type: Boolean, default: false },
   readBy: [{ type: String }],
   editedAt: { type: Date },
-  reactions: [{ emoji: String, users: [{ type: String }] }], // Массив реакций
-  replyTo: { type: String, ref: "Message", default: null }, // Ссылка на сообщение, на которое отвечают
+  reactions: [{ emoji: String, users: [{ type: String }] }],
+  replyTo: { type: String, ref: "Message", default: null },
 });
 
 export default mongoose.models.Message || mongoose.model<IMessage>("Message", MessageSchema);

@@ -13,6 +13,7 @@ interface IUser extends Document {
   posts?: Types.ObjectId[];
   following?: Types.ObjectId[];
   communities?: Types.ObjectId[];
+  publicKey?: string; // Публичный ключ для E2EE
 }
 
 export interface LeanUser {
@@ -28,9 +29,9 @@ export interface LeanUser {
   posts?: string[];
   following?: { _id: string; username: string }[];
   communities?: string[];
+  publicKey?: string;
 }
 
-// Экспортируем UserDocument как синоним IUser
 export type UserDocument = IUser;
 
 const UserSchema = new Schema<IUser>({
@@ -52,6 +53,7 @@ const UserSchema = new Schema<IUser>({
   posts: [{ type: Schema.Types.ObjectId, ref: 'Post' }],
   following: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   communities: [{ type: Schema.Types.ObjectId, ref: 'Community' }],
+  publicKey: { type: String }, // Храним публичный ключ как строку (base64)
 });
 
 export default mongoose.models.User || mongoose.model<IUser>('User', UserSchema);

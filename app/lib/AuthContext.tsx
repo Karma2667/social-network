@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { generateKeyPair } from './crypto';
 
 interface User {
   userId: string;
@@ -29,25 +30,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const initializeAuth = async () => {
       try {
         const token = localStorage.getItem('authToken');
-        console.log('AuthProvider: Токен из localStorage:', token);
         if (token) {
           const res = await fetch('/api/auth/me', {
             headers: {
               Authorization: `Bearer ${token}`,
             },
           });
-          console.log('AuthProvider: Ответ /api/auth/me:', res.status, res.statusText);
           if (res.ok && isMounted) {
             const data = await res.json();
-            console.log('AuthProvider: Данные /api/auth/me:', data);
             setUser({ userId: data.userId, username: data.username, avatar: data.avatar || '/default-avatar.png' });
+
+            // Проверяем наличие ключей шифрования
+            const privateKey = localStorage.getItem(`privateKey_${data.userId}`);
+            if (!privateKey) {
+              const { publicKey, privateKey } = await generateKeyPair();
+              localStorage.setItem(`privateKey_${data.userId}`, privateKey);
+              // Отправляем публичный ключ на сервер
+              await fetch('/api/users/keys', {
+                method: 'PATCH',
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ publicKey }),
+              });
+            }
           } else if (isMounted) {
             localStorage.removeItem('authToken');
             localStorage.removeItem('username');
-            console.log('AuthProvider: Токен удалён из-за ошибки:', res.status);
           }
-        } else if (isMounted) {
-          console.log('AuthProvider: Токен отсутствует');
         }
       } catch (error) {
         console.error('AuthProvider: Ошибка инициализации авторизации:', error);
@@ -56,7 +67,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } finally {
         if (isMounted) {
           setIsInitialized(true);
-          console.log('AuthProvider: Инициализация завершена, user:', user, 'isInitialized:', isInitialized);
         }
       }
     };

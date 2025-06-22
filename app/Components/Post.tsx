@@ -35,7 +35,7 @@ interface PostProps {
   onDelete: (postId: string) => Promise<void>;
   currentUserId?: string;
   isAdmin?: boolean;
-  isCommunityPost?: boolean; // Added to fix TypeScript error
+  isCommunityPost?: boolean;
   communityId?: string;
 }
 
@@ -231,7 +231,13 @@ export default function Post({
       setCommentsState((prev) =>
         prev.map((c) =>
           c._id === commentId
-            ? { ...c, ...updatedComment, userId: { ...c.userId, ...updatedComment.userId } }
+            ? {
+                ...c,
+                ...updatedComment,
+                userId: updatedComment.userId
+                  ? { ...c.userId, ...updatedComment.userId }
+                  : c.userId,
+              }
             : c
         )
       );
@@ -259,7 +265,13 @@ export default function Post({
       setCommentsState((prev) =>
         prev.map((c) =>
           c._id === commentId
-            ? { ...c, ...updatedComment, userId: { ...c.userId, ...updatedComment.userId } }
+            ? {
+                ...c,
+                ...updatedComment,
+                userId: updatedComment.userId
+                  ? { ...c.userId, ...updatedComment.userId }
+                  : c.userId,
+              }
             : c
         )
       );
@@ -288,7 +300,13 @@ export default function Post({
       setCommentsState((prev) =>
         prev.map((c) =>
           c._id === commentId
-            ? { ...c, ...updatedComment, userId: { ...c.userId, ...updatedComment.userId } }
+            ? {
+                ...c,
+                ...updatedComment,
+                userId: updatedComment.userId
+                  ? { ...c.userId, ...updatedComment.userId }
+                  : c.userId,
+              }
             : c
         )
       );

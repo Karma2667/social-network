@@ -52,10 +52,10 @@ export async function GET(request: Request, { params }: { params: { id: string }
     }
 
     // Проверяем, подписан ли текущий пользователь
-    const isFollowing = currentUser.following?.some((follow) => follow._id === id) || false;
+    const isFollowing = currentUser.following?.some((follow) => follow.toString() === id) || false;
 
     return NextResponse.json({
-      _id: user._id,
+      _id: user._id.toString(),
       username: user.username,
       name: user.name,
       bio: user.bio,
@@ -63,7 +63,8 @@ export async function GET(request: Request, { params }: { params: { id: string }
       posts: user.posts,
       friendStatus,
       isFollowing,
-    });
+      publicKey: user.publicKey, // Добавляем publicKey
+    }, { status: 200 });
   } catch (error: any) {
     console.error('GET /api/users/[id]: Ошибка сервера:', error.message);
     return NextResponse.json({ error: 'Ошибка сервера', details: error.message }, { status: 500 });
@@ -95,7 +96,15 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     if (bio !== undefined) user.bio = bio;
 
     await user.save();
-    return NextResponse.json(user);
+    return NextResponse.json({
+      _id: user._id.toString(),
+      username: user.username,
+      name: user.name,
+      bio: user.bio,
+      interests: user.interests,
+      avatar: user.avatar,
+      publicKey: user.publicKey,
+    }, { status: 200 });
   } catch (error: any) {
     console.error('PUT /api/users/[id]: Ошибка сервера:', error.message);
     return NextResponse.json({ error: 'Не удалось обновить пользователя', details: error.message }, { status: 500 });
