@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/lib/AuthContext';
-import { Container, Row, Col, Tabs, Tab, ListGroup, Button, Image, Spinner } from 'react-bootstrap';
-import { PersonAdd, PersonCheck, PersonDash } from 'react-bootstrap-icons'; // Иконки для действий
+import { Container, Row, Col, Tabs, Tab, ListGroup, Button, Image, Spinner, Alert } from 'react-bootstrap'; // Добавлен Alert
+import { PersonAdd, PersonCheck, PersonDash } from 'react-bootstrap-icons';
 
 interface Connection {
   _id: string;
@@ -28,6 +28,38 @@ export default function ConnectionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const fetchConnections = async () => {
+    if (!user) return;
+
+    try {
+      setLoading(true);
+      const authToken = localStorage.getItem('authToken') || '';
+      const res = await fetch('/api/friends', {
+        headers: {
+          'x-user-id': user.userId,
+          'Authorization': `Bearer ${authToken}`,
+        },
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`Ошибка сервера: ${res.status} - ${errorText || 'Неизвестная ошибка'}`);
+      }
+
+      const data = await res.json();
+      setIncomingRequests(data.incomingRequests || []);
+      setOutgoingRequests(data.outgoingRequests || []);
+      setFriends(data.friends || []);
+      setFollowers(data.followers || []);
+      setFollowing(data.following || []);
+    } catch (err: any) {
+      console.error('ConnectionsPage: Ошибка загрузки связей:', err.message);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!isInitialized) {
       console.log('ConnectionsPage: Ожидание инициализации AuthContext...');
@@ -40,62 +72,32 @@ export default function ConnectionsPage() {
       return;
     }
 
-    const fetchConnections = async () => {
-      try {
-        setLoading(true);
-        const authToken = localStorage.getItem('authToken') || '';
-        const res = await fetch('/api/friends', {
-          headers: {
-            'x-user-id': user.userId,
-            'Authorization': `Bearer ${authToken}`,
-          },
-        });
-
-        if (!res.ok) {
-          const errorData = await res.json();
-          throw new Error(errorData.error || 'Не удалось загрузить связи');
-        }
-
-        const data = await res.json();
-        setIncomingRequests(data.incomingRequests || []);
-        setOutgoingRequests(data.outgoingRequests || []);
-        setFriends(data.friends || []);
-        setFollowers(data.followers || []);
-        setFollowing(data.following || []);
-      } catch (err: any) {
-        console.error('ConnectionsPage: Ошибка загрузки связей:', err.message);
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchConnections();
   }, [isInitialized, user, router]);
 
   const handleRequestAction = async (requestId: string, action: 'accept' | 'reject') => {
+    if (!user) return;
+
     try {
       const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch('/api/friends', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-id': user?.userId || '',
+          'x-user-id': user.userId,
           'Authorization': `Bearer ${authToken}`,
         },
         body: JSON.stringify({ requestId, action }),
       });
 
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || `Не удалось ${action === 'accept' ? 'принять' : 'отклонить'} запрос`);
+        const errorText = await res.text();
+        throw new Error(`Не удалось ${action === 'accept' ? 'принять' : 'отклонить'} запрос: ${errorText}`);
       }
 
       if (action === 'accept') {
         const acceptedRequest = incomingRequests.find((req) => req._id === requestId);
-        if (acceptedRequest) {
-          setFriends((prev) => [...prev, acceptedRequest.fromUser]);
-        }
+        if (acceptedRequest) setFriends((prev) => [...prev, acceptedRequest.fromUser]);
       }
       setIncomingRequests((prev) => prev.filter((req) => req._id !== requestId));
     } catch (err: any) {
@@ -105,19 +107,21 @@ export default function ConnectionsPage() {
   };
 
   const handleCancelRequest = async (requestId: string) => {
+    if (!user) return;
+
     try {
       const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch(`/api/friends?requestId=${requestId}`, {
         method: 'DELETE',
         headers: {
-          'x-user-id': user?.userId || '',
+          'x-user-id': user.userId,
           'Authorization': `Bearer ${authToken}`,
         },
       });
 
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Не удалось отменить запрос');
+        const errorText = await res.text();
+        throw new Error(`Не удалось отменить запрос: ${errorText}`);
       }
 
       setOutgoingRequests((prev) => prev.filter((req) => req._id !== requestId));
@@ -128,6 +132,8 @@ export default function ConnectionsPage() {
   };
 
   const handleFollowToggle = async (toUserId: string, isCurrentlyFollowing: boolean) => {
+    if (!user) return;
+
     try {
       const authToken = localStorage.getItem('authToken') || '';
       const action = isCurrentlyFollowing ? 'unfollow' : 'follow';
@@ -136,15 +142,15 @@ export default function ConnectionsPage() {
         method,
         headers: {
           'Content-Type': 'application/json',
-          'x-user-id': user?.userId || '',
+          'x-user-id': user.userId,
           'Authorization': `Bearer ${authToken}`,
         },
         body: JSON.stringify({ toUserId, action }),
       });
 
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || `Не удалось ${action === 'follow' ? 'подписаться' : 'отписаться'}`);
+        const errorText = await res.text();
+        throw new Error(`Не удалось ${action === 'follow' ? 'подписаться' : 'отписаться'}: ${errorText}`);
       }
 
       if (action === 'follow') {
@@ -162,6 +168,17 @@ export default function ConnectionsPage() {
     return (
       <Container className="d-flex justify-content-center align-items-center" style={{ height: '100vh' }}>
         <Spinner animation="border" variant="primary" />
+      </Container>
+    );
+  }
+
+  if (error) {
+    return (
+      <Container className="p-3">
+        <Alert variant="danger">{error}</Alert>
+        <Button variant="primary" onClick={fetchConnections}>
+          Повторить попытку
+        </Button>
       </Container>
     );
   }
@@ -185,9 +202,7 @@ export default function ConnectionsPage() {
                             roundedCircle
                             className="telegram-user-avatar"
                           />
-                          <div className="telegram-user-name">
-                            {friend.username}
-                          </div>
+                          <div className="telegram-user-name">{friend.username}</div>
                           <Button
                             variant="link"
                             onClick={() => router.push(`/profile/${friend._id}`)}
@@ -207,7 +222,7 @@ export default function ConnectionsPage() {
                 <ListGroup>
                   {followers.length > 0 ? (
                     followers.map((follower) => {
-                      const isCurrentlyFollowing = following.some((f) => f._id === follower._id);
+                      const isFollowing = following.some((f) => f._id === follower._id);
                       return (
                         <ListGroup.Item key={follower._id} className="telegram-user-item">
                           <div className="d-flex align-items-center">
@@ -217,9 +232,7 @@ export default function ConnectionsPage() {
                               roundedCircle
                               className="telegram-user-avatar"
                             />
-                            <div className="telegram-user-name">
-                              {follower.username}
-                            </div>
+                            <div className="telegram-user-name">{follower.username}</div>
                             <Button
                               variant="link"
                               onClick={() => router.push(`/profile/${follower._id}`)}
@@ -229,9 +242,9 @@ export default function ConnectionsPage() {
                             </Button>
                             <Button
                               className="telegram-profile-button"
-                              onClick={() => handleFollowToggle(follower._id, isCurrentlyFollowing)}
+                              onClick={() => handleFollowToggle(follower._id, isFollowing)}
                             >
-                              {isCurrentlyFollowing ? (
+                              {isFollowing ? (
                                 <>
                                   <PersonDash className="me-1" /> Отписаться
                                 </>
@@ -262,9 +275,7 @@ export default function ConnectionsPage() {
                             roundedCircle
                             className="telegram-user-avatar"
                           />
-                          <div className="telegram-user-name">
-                            {follow.username}
-                          </div>
+                          <div className="telegram-user-name">{follow.username}</div>
                           <Button
                             variant="link"
                             onClick={() => router.push(`/profile/${follow._id}`)}
@@ -298,9 +309,7 @@ export default function ConnectionsPage() {
                             roundedCircle
                             className="telegram-user-avatar"
                           />
-                          <div className="telegram-user-name">
-                            {request.fromUser.username}
-                          </div>
+                          <div className="telegram-user-name">{request.fromUser.username}</div>
                           <Button
                             className="telegram-profile-button me-2"
                             onClick={() => handleRequestAction(request._id, 'accept')}
@@ -334,9 +343,7 @@ export default function ConnectionsPage() {
                             roundedCircle
                             className="telegram-user-avatar"
                           />
-                          <div className="telegram-user-name">
-                            {request.toUser.username}
-                          </div>
+                          <div className="telegram-user-name">{request.toUser.username}</div>
                           <Button
                             variant="outline-secondary"
                             onClick={() => handleCancelRequest(request._id)}

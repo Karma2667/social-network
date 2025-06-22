@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/lib/AuthContext';
 import { Container, Row, Col, Form, Button, Alert, ListGroup, Modal, FormCheck } from 'react-bootstrap';
 import Image from 'next/image';
@@ -16,13 +16,39 @@ interface ProfileData {
   interests: string[];
 }
 
+interface UserData {
+  _id: string;
+  username: string;
+  avatar?: string;
+}
+
+interface CommentData {
+  _id: string;
+  userId: UserData;
+  content: string;
+  createdAt: string;
+  images?: string[];
+  likes?: string[];
+  reactions?: { emoji: string; users: string[] }[];
+}
+
+interface PostData {
+  _id: string;
+  content: string;
+  userId: UserData;
+  createdAt: string;
+  likes: string[];
+  reactions: { emoji: string; users: string[] }[];
+  images: string[];
+  comments: CommentData[];
+}
+
 const PREDEFINED_INTERESTS = [
   'Программирование', 'Музыка', 'Игры', 'Путешествия', 'Спорт',
   'Книги', 'Фильмы', 'Кулинария', 'Искусство', 'Наука',
 ];
 
 export default function ProfilePage() {
-  const { id: profileId } = useParams();
   const { user, isInitialized } = useAuth();
   const router = useRouter();
   const [isDesktop, setIsDesktop] = useState(false);
@@ -33,9 +59,7 @@ export default function ProfilePage() {
   const [avatar, setAvatar] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [interests, setInterests] = useState<string[]>([]);
-  const [posts, setPosts] = useState<any[]>([]);
-  const [postContent, setPostContent] = useState('');
-  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [posts, setPosts] = useState<PostData[]>([]);
   const [showInterestsModal, setShowInterestsModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -50,13 +74,8 @@ export default function ProfilePage() {
   }, []);
 
   useEffect(() => {
-    if (!isInitialized) {
-      console.log('ProfilePage: Ожидание инициализации AuthContext...');
-      return;
-    }
-
+    if (!isInitialized) return;
     if (!user) {
-      console.log('ProfilePage: Пользователь не авторизован, редирект на /login');
       router.replace('/login');
       return;
     }
@@ -65,11 +84,12 @@ export default function ProfilePage() {
     const fetchProfileAndPosts = async () => {
       try {
         const authToken = localStorage.getItem('authToken') || '';
-        const headers: Record<string, string> = { 'Authorization': `Bearer ${authToken}` };
-        if (user.userId) headers['x-user-id'] = user.userId;
+        const headers: Record<string, string> = {
+          'Authorization': `Bearer ${authToken}`,
+          'x-user-id': user.userId,
+        };
 
-        const profileUrl = profileId ? `/api/users/${profileId}` : '/api/profile';
-        const profileRes = await fetch(profileUrl, { headers, cache: 'no-store' });
+        const profileRes = await fetch('/api/profile', { headers, cache: 'no-store' });
         if (!profileRes.ok) {
           const errorData = await profileRes.json();
           throw new Error(`Не удалось загрузить профиль: ${profileRes.status} ${errorData.error || ''}`);
@@ -81,22 +101,21 @@ export default function ProfilePage() {
         setBio(data.bio || '');
         setInterests(data.interests || []);
 
-        const postsRes = await fetch('/api/posts', { headers, cache: 'no-store' });
+        const postsRes = await fetch(`/api/posts?userId=${user.userId}`, { headers, cache: 'no-store' });
         if (!postsRes.ok) {
           const errorData = await postsRes.json();
-          throw new Error('Не удалось загрузить посты');
+          throw new Error(`Не удалось загрузить посты: ${postsRes.status} ${errorData.error || ''}`);
         }
         const postsData = await postsRes.json();
-        setPosts(postsData);
+        setPosts(Array.isArray(postsData) ? postsData : []);
       } catch (err: any) {
-        console.error('ProfilePage: Ошибка загрузки:', err.message);
         setError(err.message);
       } finally {
         setLoading(false);
       }
     };
     fetchProfileAndPosts();
-  }, [isInitialized, user, router, profileId]);
+  }, [isInitialized, user, router]);
 
   useEffect(() => {
     if (avatar) {
@@ -169,77 +188,33 @@ export default function ProfilePage() {
       setAvatarPreview(null);
       router.refresh();
     } catch (err: any) {
-      console.error('ProfilePage: Ошибка обновления:', err.message);
       setError(err.message);
     }
   };
 
-  const handlePostSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || submitting || !postContent.trim()) return;
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+    if (!confirm("Вы уверены, что хотите удалить аккаунт? Все данные, включая сообщения, посты и чаты, будут безвозвратно удалены.")) {
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
-
     try {
       const authToken = localStorage.getItem('authToken') || '';
       const headers: Record<string, string> = { 'Authorization': `Bearer ${authToken}`, 'x-user-id': user.userId };
-      const url = editingPostId ? `/api/posts/${editingPostId}` : '/api/posts';
-      const method = editingPostId ? 'PUT' : 'POST';
-      const res = await fetch(url, { method, headers, body: JSON.stringify({ content: postContent, userId: user.userId }), cache: 'no-store' });
-
+      const res = await fetch('/api/users', { method: 'DELETE', headers });
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.error || 'Ошибка с постом');
+        throw new Error(errorData.error || 'Ошибка удаления аккаунта');
       }
-
-      const updatedPost = await res.json();
-      setPosts((prev) =>
-        editingPostId
-          ? prev.map((post) => (post._id === editingPostId ? updatedPost : post))
-          : [updatedPost, ...prev]
-      );
-      setPostContent('');
-      setEditingPostId(null);
+      localStorage.removeItem('authToken');
+      router.replace('/login');
     } catch (err: any) {
-      console.error('ProfilePage: Ошибка с постом:', err.message);
-      setError(err.message);
+      setError('Не удалось удалить аккаунт: ' + err.message);
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const handleEditPost = (postId: string, content: string) => {
-    setPostContent(content);
-    setEditingPostId(postId);
-  };
-
-  const handleDeletePost = async (postId: string) => {
-    if (!user) return;
-    try {
-      const authToken = localStorage.getItem('authToken') || '';
-      const headers: Record<string, string> = { 'Authorization': `Bearer ${authToken}`, 'x-user-id': user.userId };
-      const res = await fetch(`/api/posts/${postId}`, { method: 'DELETE', headers });
-      if (res.ok) {
-        setPosts((prev) => prev.filter((post) => post._id !== postId));
-      }
-    } catch (err: any) {
-      console.error('ProfilePage: Ошибка удаления поста:', err.message);
-      setError(err.message);
-    }
-  };
-
-  const handleInterestToggle = (interest: string) => {
-    setInterests((prev) =>
-      prev.includes(interest)
-        ? prev.filter((i) => i !== interest)
-        : prev.length < 5
-        ? [...prev, interest]
-        : prev
-    );
-  };
-
-  const handleAvatarChange = () => {
-    if (avatarInputRef.current) avatarInputRef.current.click();
   };
 
   const getAvatarUrl = (avatarPath?: string) => {
@@ -247,16 +222,15 @@ export default function ProfilePage() {
     return avatarPath || '/default-avatar.png';
   };
 
-  const isOwnProfile = () => !profileId || (user && profile && user.userId === profile._id);
-
-  if (!isInitialized || loading) return <div>Загрузка...</div>;
+  if (!isInitialized || loading) return <div className="p-4 text-center text-muted">Загрузка...</div>;
   if (!user) return null;
 
   return (
-    <Container fluid>
+    <Container fluid className="telegram-profile-page">
+      {error && <Alert variant="danger">{error}</Alert>}
       <Row>
         {isDesktop && (
-          <Col md={3} className="border-end telegram-sidebar">
+          <Col md={3}>
             <div className="p-3">
               <h5>Профиль</h5>
               <div className="text-center mb-4">
@@ -265,15 +239,131 @@ export default function ProfilePage() {
                   alt={profile?.username || 'User Profile'}
                   width={150}
                   height={150}
-                  className="rounded-circle telegram-profile-avatar"
-                  onError={(e) => { (e.target as HTMLImageElement).src = '/default-avatar.png'; }}
+                  className="rounded-circle"
                 />
-                {isOwnProfile() && (
-                  <Button variant="outline-primary" onClick={handleAvatarChange} className="mt-2 w-100">
+                <Button
+                  variant="outline-primary"
+                  onClick={() => avatarInputRef.current?.click()}
+                  className="mt-2 w-100"
+                >
+                  Изменить аватар
+                </Button>
+                <input
+                  type="file"
+                  accept="image/*"
+                  ref={avatarInputRef}
+                  onChange={(e) => setAvatar(e.target.files?.[0] || null)}
+                  style={{ display: 'none' }}
+                />
+              </div>
+              <Form onSubmit={handleProfileSubmit}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Имя</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Введите имя"
+                  />
+                </Form.Group>
+                <Form.Group className="mb-3">
+                  <Form.Label>Имя пользователя</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Введите @username"
+                  />
+                </Form.Group>
+                <Form.Group className="mb-3">
+                  <Form.Label>Био</Form.Label>
+                  <Form.Control
+                    as="textarea"
+                    value={bio}
+                    onChange={(e) => setBio(e.target.value)}
+                    placeholder="Расскажите о себе"
+                  />
+                </Form.Group>
+                <Form.Group className="mb-3">
+                  <div className="mb-2">
+                    {interests.length > 0 ? (
+                      interests.map((interest) => (
+                        <span key={interest} className="badge bg-primary me-1">{interest}</span>
+                      ))
+                    ) : <p className="text-muted">Нет интересов</p>}
+                  </div>
+                  <Button
+                    variant="outline-primary"
+                    onClick={() => setShowInterestsModal(true)}
+                  >
+                    Выбрать интересы
+                  </Button>
+                </Form.Group>
+                <Button
+                  variant="primary"
+                  type="submit"
+                  disabled={submitting}
+                >
+                  {submitting ? 'Сохранение...' : 'Сохранить'}
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={handleDeleteAccount}
+                  disabled={submitting}
+                  className="ms-2"
+                >
+                  Удалить все
+                </Button>
+              </Form>
+            </div>
+          </Col>
+        )}
+        <Col md={isDesktop ? 9 : 12}>
+          <div className="p-3 telegram-posts">
+            <h5>Посты</h5>
+            {error && <Alert variant="danger">{error}</Alert>}
+            <ListGroup>
+              {Array.isArray(posts) && posts.length > 0 ? (
+                posts.map((post) => (
+                  <ListGroup.Item key={post._id} className="border-0 mb-2">
+                    <Post
+                      postId={post._id}
+                      username={post.userId?.username || 'Unknown'}
+                      content={post.content}
+                      createdAt={post.createdAt}
+                      userId={post.userId?._id || ''}
+                      likes={post.likes || []}
+                      reactions={post.reactions || []}
+                      images={post.images || []}
+                      comments={post.comments || []}
+                      userAvatar={post.userId?.avatar || '/default-avatar.png'}
+                      currentUserId={user.userId}
+                      isAdmin={false}
+                    />
+                  </ListGroup.Item>
+                ))
+              ) : (
+                <p className="text-muted text-center">Нет постов</p>
+              )}
+            </ListGroup>
+            {!isDesktop && (
+              <div className="mt-4">
+                <h5>Профиль</h5>
+                <div className="text-center mb-4">
+                  <Image
+                    src={getAvatarUrl(profile?.avatar)}
+                    alt={profile?.username || 'User Profile'}
+                    width={150}
+                    height={150}
+                    className="rounded-circle"
+                  />
+                  <Button
+                    variant="outline-primary"
+                    onClick={() => avatarInputRef.current?.click()}
+                    className="mt-2 w-100"
+                  >
                     Изменить аватар
                   </Button>
-                )}
-                {isOwnProfile() && (
                   <input
                     type="file"
                     accept="image/*"
@@ -281,9 +371,7 @@ export default function ProfilePage() {
                     onChange={(e) => setAvatar(e.target.files?.[0] || null)}
                     style={{ display: 'none' }}
                   />
-                )}
-              </div>
-              {isOwnProfile() && (
+                </div>
                 <Form onSubmit={handleProfileSubmit}>
                   <Form.Group className="mb-3">
                     <Form.Label>Имя</Form.Label>
@@ -316,209 +404,39 @@ export default function ProfilePage() {
                     <div className="mb-2">
                       {interests.length > 0 ? (
                         interests.map((interest) => (
-                          <span key={interest} className="badge bg-primary me-1 telegram-profile-button">
-                            {interest}
-                          </span>
+                          <span key={interest} className="badge bg-primary me-1">{interest}</span>
                         ))
-                      ) : <p>Нет интересов</p>}
+                      ) : <p className="text-muted">Нет интересов</p>}
                     </div>
                     <Button
                       variant="outline-primary"
                       onClick={() => setShowInterestsModal(true)}
-                      className="telegram-profile-button"
                     >
                       Выбрать интересы
                     </Button>
                   </Form.Group>
-                  <Button variant="primary" type="submit" disabled={submitting}>
-                    {submitting ? 'Сохранение...' : 'Сохранить'}
-                  </Button>
-                </Form>
-              )}
-              {!isOwnProfile() && profile && (
-                <div>
-                  <h5>@{profile.username}</h5>
-                  {profile.name && <p>Имя: {profile.name}</p>}
-                  {profile.bio && <p>О себе: {profile.bio}</p>}
-                  {profile.interests.length > 0 && (
-                    <p>
-                      Интересы:{' '}
-                      {profile.interests.map((interest) => (
-                        <span key={interest} className="badge bg-primary me-1">
-                          {interest}
-                        </span>
-                      ))}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          </Col>
-        )}
-        <Col md={isDesktop ? 9 : 12}>
-          <div className="p-3 telegram-posts">
-            <h5>Посты</h5>
-            {isOwnProfile() && (
-              <Form onSubmit={handlePostSubmit} className="mb-3">
-                <Form.Group className="mb-3">
-                  <Form.Control
-                    as="textarea"
-                    value={postContent}
-                    onChange={(e) => setPostContent(e.target.value)}
-                    placeholder="Что нового?"
-                    disabled={submitting}
-                    className="telegram-post-input"
-                  />
-                </Form.Group>
-                <Button
-                  variant="primary"
-                  type="submit"
-                  disabled={submitting || !postContent.trim()}
-                  className="telegram-post-button"
-                >
-                  {submitting ? 'Отправка...' : editingPostId ? 'Обновить' : 'Опубликовать'}
-                </Button>
-                {editingPostId && (
                   <Button
-                    variant="secondary"
-                    className="ms-2 telegram-profile-button"
-                    onClick={() => { setPostContent(''); setEditingPostId(null); }}
+                    variant="primary"
+                    type="submit"
                     disabled={submitting}
                   >
-                    Отмена
+                    {submitting ? 'Сохранение...' : 'Сохранить'}
                   </Button>
-                )}
-              </Form>
-            )}
-            {error && <Alert variant="danger">{error}</Alert>}
-            <ListGroup>
-              {posts.map((post) => (
-                <ListGroup.Item key={post._id} className="telegram-post-item">
-                  <Post
-                    postId={post._id}
-                    username={post.userId.username}
-                    content={post.content}
-                    createdAt={post.createdAt}
-                    userId={post.userId._id}
-                    likes={post.likes || []}
-                    reactions={post.reactions || []}
-                    images={post.images || []}
-                    comments={post.comments || []}
-                    userAvatar={post.userId.avatar || '/default-avatar.png'}
-                    fetchPosts={async () => {
-                      const authToken = localStorage.getItem('authToken') || '';
-                      const headers: Record<string, string> = { 'Authorization': `Bearer ${authToken}`, 'x-user-id': user.userId };
-                      const res = await fetch('/api/posts', { headers, cache: 'no-store' });
-                      if (res.ok) setPosts(await res.json());
-                    }}
-                    onDelete={handleDeletePost}
-                    currentUserId={user.userId}
-                    isAdmin={false}
-                  />
-                </ListGroup.Item>
-              ))}
-            </ListGroup>
-            {!isDesktop && (
-              <div className="mt-4">
-                <h5>Профиль</h5>
-                <div className="text-center mb-4">
-                  <Image
-                    src={getAvatarUrl(profile?.avatar)}
-                    alt={profile?.username || 'User Profile'}
-                    width={150}
-                    height={150}
-                    className="rounded-circle telegram-profile-avatar"
-                    onError={(e) => { (e.target as HTMLImageElement).src = '/default-avatar.png'; }}
-                  />
-                  {isOwnProfile() && (
-                    <Button variant="outline-primary" onClick={handleAvatarChange} className="mt-2 w-100">
-                      Изменить аватар
-                    </Button>
-                  )}
-                  {isOwnProfile() && (
-                    <input
-                      type="file"
-                      accept="image/*"
-                      ref={avatarInputRef}
-                      onChange={(e) => setAvatar(e.target.files?.[0] || null)}
-                      style={{ display: 'none' }}
-                    />
-                  )}
-                </div>
-                {isOwnProfile() ? (
-                  <Form onSubmit={handleProfileSubmit}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Имя</Form.Label>
-                      <Form.Control
-                        type="text"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="Введите имя"
-                      />
-                    </Form.Group>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Имя пользователя</Form.Label>
-                      <Form.Control
-                        type="text"
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        placeholder="Введите @username"
-                      />
-                    </Form.Group>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Био</Form.Label>
-                      <Form.Control
-                        as="textarea"
-                        value={bio}
-                        onChange={(e) => setBio(e.target.value)}
-                        placeholder="Расскажите о себе"
-                      />
-                    </Form.Group>
-                    <Form.Group className="mb-3">
-                      <div className="mb-2">
-                        {interests.length > 0 ? (
-                          interests.map((interest) => (
-                            <span key={interest} className="badge bg-primary me-1 telegram-profile-button">
-                              {interest}
-                            </span>
-                          ))
-                        ) : <p>Нет интересов</p>}
-                      </div>
-                      <Button
-                        variant="outline-primary"
-                        onClick={() => setShowInterestsModal(true)}
-                        className="telegram-profile-button"
-                      >
-                        Выбрать интересы
-                      </Button>
-                    </Form.Group>
-                    <Button variant="primary" type="submit" disabled={submitting}>
-                      {submitting ? 'Сохранение...' : 'Сохранить'}
-                    </Button>
-                  </Form>
-                ) : profile && (
-                  <div>
-                    <h5>@{profile.username}</h5>
-                    {profile.name && <p>Имя: {profile.name}</p>}
-                    {profile.bio && <p>О себе: {profile.bio}</p>}
-                    {profile.interests.length > 0 && (
-                      <p>
-                        Интересы:{' '}
-                        {profile.interests.map((interest) => (
-                          <span key={interest} className="badge bg-primary me-1">
-                            {interest}
-                          </span>
-                        ))}
-                      </p>
-                    )}
-                  </div>
-                )}
+                  <Button
+                    variant="danger"
+                    onClick={handleDeleteAccount}
+                    disabled={submitting}
+                    className="ms-2"
+                  >
+                    Удалить все
+                  </Button>
+                </Form>
               </div>
             )}
           </div>
         </Col>
       </Row>
-      <Modal show={showInterestsModal} onHide={() => setShowInterestsModal(false)} className="telegram-profile">
+      <Modal show={showInterestsModal} onHide={() => setShowInterestsModal(false)}>
         <Modal.Header closeButton>
           <Modal.Title>Выберите интересы</Modal.Title>
         </Modal.Header>
@@ -529,16 +447,30 @@ export default function ProfilePage() {
               type="checkbox"
               label={interest}
               checked={interests.includes(interest)}
-              onChange={() => handleInterestToggle(interest)}
+              onChange={() => {
+                setInterests((prev) =>
+                  prev.includes(interest)
+                    ? prev.filter((i) => i !== interest)
+                    : prev.length < 5
+                    ? [...prev, interest]
+                    : prev
+                );
+              }}
               className="mb-2"
             />
           ))}
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowInterestsModal(false)} className="telegram-profile-button">
+          <Button
+            variant="secondary"
+            onClick={() => setShowInterestsModal(false)}
+          >
             Закрыть
           </Button>
-          <Button variant="primary" onClick={() => setShowInterestsModal(false)} className="telegram-profile-button">
+          <Button
+            variant="primary"
+            onClick={() => setShowInterestsModal(false)}
+          >
             Сохранить
           </Button>
         </Modal.Footer>

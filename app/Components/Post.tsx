@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Card, Button, Form, Image, ListGroup } from 'react-bootstrap';
 import { useAuth } from '@/app/lib/AuthContext';
-import { HandThumbsUp, PencilSquare, Trash, Paperclip } from 'react-bootstrap-icons';
+import { HandThumbsUp, PencilSquare, Paperclip } from 'react-bootstrap-icons';
 import EmojiPicker from './EmojiPicker';
 import ReactionPicker from './ReactionPicker';
 import Comment from './Comment';
@@ -31,12 +31,12 @@ interface PostProps {
   images: string[];
   comments: CommentProps[];
   userAvatar?: string;
-  fetchPosts: () => Promise<void>;
-  onDelete: (postId: string) => Promise<void>;
   currentUserId?: string;
   isAdmin?: boolean;
   isCommunityPost?: boolean;
   communityId?: string;
+  onEdit?: (postId: string, content: string, images: File[]) => Promise<void>;
+  fetchPosts?: () => Promise<void>;
 }
 
 export default function Post({
@@ -50,12 +50,12 @@ export default function Post({
   images = [],
   comments = [],
   userAvatar,
-  fetchPosts,
-  onDelete,
   currentUserId,
   isAdmin = false,
   isCommunityPost = false,
   communityId,
+  onEdit,
+  fetchPosts,
 }: PostProps) {
   const { user, avatar } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
@@ -94,7 +94,7 @@ export default function Post({
         body: JSON.stringify({ userId: user.userId }),
       });
       if (!res.ok) throw new Error(await res.text() || 'Не удалось поставить/убрать лайк');
-      await fetchPosts();
+      if (fetchPosts) await fetchPosts();
     } catch (err: any) {
       console.error('Post: Ошибка лайка:', err.message);
     }
@@ -114,7 +114,7 @@ export default function Post({
         body: JSON.stringify({ userId: user.userId, emoji }),
       });
       if (!res.ok) throw new Error(await res.text() || 'Не удалось добавить реакцию');
-      await fetchPosts();
+      if (fetchPosts) await fetchPosts();
       setShowReactions(null);
     } catch (err: any) {
       console.error('Post: Ошибка реакции:', err.message);
@@ -123,45 +123,14 @@ export default function Post({
 
   const handleEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || !onEdit) return;
     try {
-      let imagePaths = images;
-      if (editImages.length > 0) {
-        const formData = new FormData();
-        editImages.forEach((file) => formData.append('files', file));
-        const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
-        if (!uploadRes.ok) throw new Error((await uploadRes.json()).error || 'Не удалось загрузить изображения');
-        imagePaths = [...images, ...(await uploadRes.json()).files];
-      }
-
-      const authToken = localStorage.getItem('authToken') || '';
-      const res = await fetch(`/api/posts/${postId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user.userId,
-          'Authorization': `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({ content: editContent, images: imagePaths }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error || 'Не удалось обновить пост');
+      await onEdit(postId, editContent, editImages);
       setIsEditing(false);
       setEditImages([]);
-      await fetchPosts();
+      if (fetchPosts) await fetchPosts();
     } catch (err: any) {
       console.error('Post: Ошибка редактирования:', err.message);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!user || !onDelete) return;
-    if (!window.confirm('Вы уверены, что хотите удалить этот пост?')) return;
-
-    try {
-      await onDelete(postId);
-      await fetchPosts();
-    } catch (err: any) {
-      console.error('Post: Ошибка удаления:', err.message);
     }
   };
 
@@ -205,7 +174,7 @@ export default function Post({
       setCommentsState((prev) => [...prev, newCommentObj]);
       setNewComment('');
       setCommentImages([]);
-      await fetchPosts();
+      if (fetchPosts) await fetchPosts();
     } catch (err: any) {
       console.error('Post: Ошибка добавления комментария:', err.message);
     } finally {
@@ -241,7 +210,7 @@ export default function Post({
             : c
         )
       );
-      await fetchPosts();
+      if (fetchPosts) await fetchPosts();
     } catch (err: any) {
       console.error('Post: Ошибка лайка комментария:', err.message);
     }
@@ -275,7 +244,7 @@ export default function Post({
             : c
         )
       );
-      await fetchPosts();
+      if (fetchPosts) await fetchPosts();
       setShowReactions(null);
     } catch (err: any) {
       console.error('Post: Ошибка реакции комментария:', err.message);
@@ -310,7 +279,7 @@ export default function Post({
             : c
         )
       );
-      await fetchPosts();
+      if (fetchPosts) await fetchPosts();
     } catch (err: any) {
       console.error('Post: Ошибка редактирования комментария:', err.message);
     }
@@ -329,7 +298,7 @@ export default function Post({
       });
       if (!res.ok) throw new Error(await res.text() || 'Не удалось удалить комментарий');
       setCommentsState((prev) => prev.filter((c) => c._id !== commentId));
-      await fetchPosts();
+      if (fetchPosts) await fetchPosts();
     } catch (err: any) {
       console.error('Post: Ошибка удаления комментария:', err.message);
     }
@@ -347,7 +316,7 @@ export default function Post({
     ? formatDistanceToNow(new Date(createdAt), { addSuffix: true })
     : formatDistanceToNow(new Date(createdAt), { addSuffix: true });
 
-  const canEditDelete = user?.userId === userId || (isAdmin && currentUserId);
+  const canEdit = onEdit && (user?.userId === userId || (isAdmin && currentUserId));
 
   return (
     <Card className="telegram-post-card mb-3">
@@ -448,15 +417,10 @@ export default function Post({
                   </div>
                 )}
               </div>
-              {canEditDelete && (
-                <>
-                  <Button variant="outline-secondary" onClick={() => setIsEditing(true)}>
-                    <PencilSquare /> Редактировать
-                  </Button>
-                  <Button variant="outline-danger" onClick={handleDelete}>
-                    <Trash /> Удалить
-                  </Button>
-                </>
+              {canEdit && (
+                <Button variant="outline-secondary" onClick={() => setIsEditing(true)}>
+                  <PencilSquare /> Редактировать
+                </Button>
               )}
             </div>
             {reactions.length > 0 && (

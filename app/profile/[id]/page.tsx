@@ -1,13 +1,37 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { Container, Form, Button, Alert, Modal, FormCheck, Image } from 'react-bootstrap';
-import { useAuth } from '@/app/lib/ClientAuthProvider';
+import { useState, useEffect } from 'react';
+import { useRouter, useParams } from 'next/navigation';
+import { useAuth } from '@/app/lib/AuthContext';
+import { Container, Alert, Image, ListGroup, Button } from 'react-bootstrap';
+import Post from '@/app/Components/Post';
 
-const INTERESTS = [
-  'Программирование', 'Музыка', 'Игры', 'Путешествия', 'Спорт',
-  'Книги', 'Фильмы', 'Кулинария', 'Искусство', 'Наука',
-];
+interface UserData {
+  _id: string;
+  username: string;
+  avatar?: string;
+}
+
+interface CommentData {
+  _id: string;
+  userId: UserData;
+  content: string;
+  createdAt: string;
+  images?: string[];
+  likes?: string[];
+  reactions?: { emoji: string; users: string[] }[];
+}
+
+interface PostData {
+  _id: string;
+  content: string;
+  userId: UserData;
+  createdAt: string;
+  likes: string[];
+  reactions: { emoji: string; users: string[] }[];
+  images: string[];
+  comments: CommentData[];
+}
 
 interface ProfileData {
   _id: string;
@@ -16,251 +40,179 @@ interface ProfileData {
   bio: string;
   avatar?: string;
   interests: string[];
+  friendStatus: 'none' | 'pending' | 'friends';
+  isFollowing: boolean;
 }
 
 export default function Profile() {
-  const { userId, isInitialized, username } = useAuth();
+  const { user, isInitialized } = useAuth();
+  const { id: profileId } = useParams() as { id: string };
+  const router = useRouter();
   const [profile, setProfile] = useState<ProfileData | null>(null);
-  const [name, setName] = useState('');
-  const [newUsername, setNewUsername] = useState('');
-  const [bio, setBio] = useState('');
-  const [avatar, setAvatar] = useState<File | null>(null);
-  const [interests, setInterests] = useState<string[]>([]);
-  const [showInterestsModal, setShowInterestsModal] = useState(false);
+  const [posts, setPosts] = useState<PostData[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const avatarInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (!isInitialized || !userId) {
-      console.log('Profile: Ожидание инициализации или userId');
-      return;
-    }
+  const fetchProfileAndPosts = async () => {
+    if (!user || !profileId) return;
+
     setLoading(true);
-    const fetchProfile = async () => {
-      try {
-        const authToken = localStorage.getItem('authToken') || '';
-        const headers: Record<string, string> = { 'Authorization': `Bearer ${authToken}` };
-        if (userId) headers['x-user-id'] = userId;
-        const res = await fetch('/api/profile', {
-          headers,
-          cache: 'no-store',
-        });
-        if (!res.ok) {
-          const errorData = await res.json();
-          throw new Error(`Не удалось загрузить профиль: ${res.status} ${errorData.error || ''}`);
-        }
-        const data: ProfileData = await res.json();
-        setProfile(data);
-        setNewUsername(data.username || '');
-        setName(data.name || '');
-        setBio(data.bio || '');
-        setInterests(data.interests || []);
-        setLoading(false);
-      } catch (err: any) {
-        console.error('Profile: Ошибка загрузки профиля:', err.message);
-        setError(err.message);
-        setLoading(false);
-      }
-    };
-    fetchProfile();
-  }, [userId, isInitialized]);
-
-  const checkUsernameAvailability = async (username: string) => {
-    if (!username.trim()) return false;
     try {
       const authToken = localStorage.getItem('authToken') || '';
-      const headers: Record<string, string> = { 'Authorization': `Bearer ${authToken}` };
-      if (userId) headers['x-user-id'] = userId;
-      const res = await fetch(`/api/profile?username=${encodeURIComponent(username)}`, {
-        headers,
-      });
-      const data = await res.json();
-      return res.ok && !data.exists;
-    } catch {
-      return false;
+      const headers = {
+        'Authorization': `Bearer ${authToken}`,
+        'x-user-id': user.userId,
+      };
+
+      const profileRes = await fetch(`/api/users/${profileId}`, { headers, cache: 'no-store' });
+      if (!profileRes.ok) throw new Error(`Не удалось загрузить профиль: ${await profileRes.text()}`);
+
+      const profileData: ProfileData = await profileRes.json();
+      setProfile(profileData);
+
+      const postsRes = await fetch(`/api/posts?userId=${profileId}`, { headers, cache: 'no-store' });
+      if (!postsRes.ok) throw new Error(`Не удалось загрузить посты: ${await postsRes.text()}`);
+
+      const postsData = await postsRes.json();
+      setPosts(Array.isArray(postsData) ? postsData : []);
+    } catch (err: any) {
+      setError(err.message.includes('404') ? 'Пользователь не найден' : err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    if (!userId) {
-      setError('Пользователь не аутентифицирован');
-      return;
-    }
-    if (!newUsername.trim()) {
-      setError('Введите имя пользователя');
-      return;
-    }
-    if (interests.length === 0) {
-      setError('Выберите хотя бы один интерес');
-      return;
-    }
-    if (interests.length > 5) {
-      setError('Максимум 5 интересов');
+  useEffect(() => {
+    if (!isInitialized || !user || !profileId) {
+      setError(!profileId ? 'Неверный идентификатор профиля' : 'Не авторизован');
+      setLoading(false);
       return;
     }
 
-    const isUsernameAvailable = await checkUsernameAvailability(newUsername);
-    if (!isUsernameAvailable && (!profile || profile.username !== newUsername)) {
-      setError('Имя пользователя уже занято');
-      return;
-    }
+    fetchProfileAndPosts();
+  }, [isInitialized, user, profileId]);
+
+  const handleAddFriend = async () => {
+    if (!user || !profileId) return;
 
     try {
       const authToken = localStorage.getItem('authToken') || '';
-      const headers: Record<string, string> = { 'Authorization': `Bearer ${authToken}` };
-      if (userId) headers['x-user-id'] = userId;
-      const formData = new FormData();
-      formData.append('name', name || '');
-      formData.append('username', newUsername);
-      formData.append('bio', bio || '');
-      formData.append('interests', JSON.stringify(interests));
-      if (avatar) formData.append('avatar', avatar);
-
-      const res = await fetch('/api/profile', {
-        method: 'PUT',
-        headers,
-        body: formData,
+      const res = await fetch('/api/friends', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'x-user-id': user.userId,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ toUserId: profileId, action: 'friend' }),
       });
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(`Не удалось обновить профиль: ${res.status} ${errorData.error || ''}`);
-      }
+      if (!res.ok) throw new Error((await res.json()).error || 'Не удалось отправить запрос на дружбу');
 
-      const updatedProfile: ProfileData = await res.json();
-      setProfile(updatedProfile);
-      setAvatar(null);
-      setShowInterestsModal(false);
+      await fetchProfileAndPosts();
     } catch (err: any) {
-      console.error('Profile: Ошибка обновления:', err.message);
       setError(err.message);
     }
   };
 
-  const handleInterestToggle = (interest: string) => {
-    setInterests((prev) =>
-      prev.includes(interest)
-        ? prev.filter((i) => i !== interest)
-        : prev.length < 5
-        ? [...prev, interest]
-        : prev
-    );
+  const handleCancelRequest = async () => {
+    if (!user || !profileId) return;
+
+    try {
+      const authToken = localStorage.getItem('authToken') || '';
+      const res = await fetch(`/api/friends?requestId=${profile?._id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'x-user-id': user.userId,
+        },
+      });
+
+      if (!res.ok) throw new Error((await res.json()).error || 'Не удалось отменить запрос на дружбу');
+
+      await fetchProfileAndPosts();
+    } catch (err: any) {
+      setError(err.message);
+    }
   };
 
-  const handleAvatarChange = () => {
-    if (avatarInputRef.current) avatarInputRef.current.click();
-  };
-
-  if (!isInitialized || loading) return <div>Загрузка...</div>;
-  if (!userId) return null;
+  if (loading) return <div className="p-3 text-center text-muted">Загрузка...</div>;
+  if (!user) {
+    router.replace('/login');
+    return null;
+  }
+  if (error) return <Alert variant="danger">{error}</Alert>;
 
   return (
     <Container className="telegram-profile">
-      <h2>Профиль @{username}</h2>
-      <div className="text-center mb-4">
-        <Image
-          src={profile?.avatar || '/default-avatar.png'}
-          alt="Аватар"
-          roundedCircle
-          className="telegram-profile-avatar"
-          style={{ width: '150px', height: '150px' }}
-          onError={(e) => { (e.target as HTMLImageElement).src = '/default-avatar.png'; }}
-        />
-        <Button variant="outline-primary" onClick={handleAvatarChange} className="mt-2">
-          Изменить аватар
-        </Button>
-        <input
-          type="file"
-          accept="image/*"
-          ref={avatarInputRef}
-          onChange={(e) => setAvatar(e.target.files?.[0] || null)}
-          style={{ display: 'none' }}
-        />
-      </div>
-      {error && <Alert variant="danger">{error}</Alert>}
       {profile && (
-        <Form onSubmit={handleUpdate} className="w-100" style={{ maxWidth: '400px' }}>
-          <Form.Group className="mb-3">
-            <Form.Label>Имя</Form.Label>
-            <Form.Control
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Введите имя"
+        <>
+          <h2>Профиль @{profile.username}</h2>
+          <div className="text-center mb-4">
+            <Image
+              src={profile.avatar || '/default-avatar.png'}
+              alt={profile.username}
+              width={150}
+              height={150}
+              className="rounded-circle"
             />
-          </Form.Group>
-          <Form.Group className="mb-3">
-            <Form.Label>Имя пользователя</Form.Label>
-            <Form.Control
-              type="text"
-              value={newUsername}
-              onChange={(e) => setNewUsername(e.target.value)}
-              placeholder="Введите @username"
-            />
-          </Form.Group>
-          <Form.Group className="mb-3">
-            <Form.Label>Биография</Form.Label>
-            <Form.Control
-              as="textarea"
-              rows={3}
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              placeholder="Расскажите о себе"
-            />
-          </Form.Group>
-          <Form.Group className="mb-3">
-            <Button
-              variant="outline-primary"
-              onClick={() => setShowInterestsModal(true)}
-            >
-              Выбрать интересы
-            </Button>
-          </Form.Group>
-          <Button variant="primary" type="submit">
-            Обновить профиль
-          </Button>
-        </Form>
+            {profile._id !== user.userId && (
+              <div className="mt-2">
+                {profile.friendStatus === 'none' && (
+                  <Button variant="primary" onClick={handleAddFriend}>
+                    Добавить в друзья
+                  </Button>
+                )}
+                {profile.friendStatus === 'pending' && (
+                  <Button variant="outline-secondary" onClick={handleCancelRequest}>
+                    Отменить запрос
+                  </Button>
+                )}
+                {profile.friendStatus === 'friends' && (
+                  <p className="text-success">Уже друзья</p>
+                )}
+              </div>
+            )}
+          </div>
+          <div>
+            {profile.name && <p>Имя: {profile.name}</p>}
+            {profile.bio && <p>О себе: {profile.bio}</p>}
+            {profile.interests.length > 0 && (
+              <p>
+                Интересы:{' '}
+                {profile.interests.map((interest) => (
+                  <span key={interest} className="badge bg-primary me-1">{interest}</span>
+                ))}
+              </p>
+            )}
+          </div>
+          <h4 className="mt-4">Посты</h4>
+          <ListGroup>
+            {posts.length > 0 ? (
+              posts.map((post) => (
+                <ListGroup.Item key={post._id} className="border-0 mb-2">
+                  <Post
+                    postId={post._id}
+                    username={post.userId?.username || 'Unknown'}
+                    content={post.content}
+                    createdAt={post.createdAt}
+                    userId={post.userId?._id || ''}
+                    likes={post.likes || []}
+                    reactions={post.reactions || []}
+                    images={post.images || []}
+                    comments={post.comments || []}
+                    userAvatar={post.userId?.avatar || '/default-avatar.png'}
+                    currentUserId={user.userId}
+                    isAdmin={false}
+                  />
+                </ListGroup.Item>
+              ))
+            ) : (
+              <p className="text-muted">Нет постов</p>
+            )}
+          </ListGroup>
+        </>
       )}
-      <Modal show={showInterestsModal} onHide={() => setShowInterestsModal(false)}>
-        <Modal.Header closeButton>
-          <Modal.Title>Выберите интересы</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {INTERESTS.map((interest) => (
-            <FormCheck
-              key={interest}
-              type="checkbox"
-              label={interest}
-              checked={interests.includes(interest)}
-              onChange={() => handleInterestToggle(interest)}
-              className="mb-2"
-            />
-          ))}
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowInterestsModal(false)}>
-            Закрыть
-          </Button>
-          <Button variant="primary" onClick={() => setShowInterestsModal(false)}>
-            Сохранить
-          </Button>
-        </Modal.Footer>
-      </Modal>
-      <h4 className="mt-4">Мои интересы</h4>
-      <div>
-        {profile?.interests.length ? (
-          profile.interests.map((interest) => (
-            <span key={interest} className="badge bg-primary me-1">
-              {interest}
-            </span>
-          ))
-        ) : (
-          <p>Выберите интересы, чтобы другие могли вас найти!</p>
-        )}
-      </div>
     </Container>
   );
 }

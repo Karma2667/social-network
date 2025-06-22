@@ -12,7 +12,7 @@ try {
   Navbar = require('@/app/Components/Navbar').default;
 } catch (e) {
   console.error('Ошибка импорта Navbar:', e);
-  Navbar = () => <div>Ошибка загрузки навигации</div>; // Заглушка
+  Navbar = () => <div>Ошибка загрузки навигации</div>;
 }
 
 export const metadata = {
@@ -24,6 +24,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   console.log('RootLayout: Рендеринг начат');
   return (
     <html lang="ru" className="telegram-root" suppressHydrationWarning>
+      <head>
+        <link
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+          rel="stylesheet"
+          integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM"
+          crossOrigin="anonymous"
+        />
+      </head>
       <body>
         <AuthProvider>
           <div className="telegram-header">

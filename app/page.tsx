@@ -39,34 +39,29 @@ export default function Home() {
   const [posts, setPosts] = useState<PostData[]>([]);
   const [postContent, setPostContent] = useState('');
   const [postImages, setPostImages] = useState<File[]>([]);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchPosts = async () => {
-    if (!user?.userId || !isInitialized) {
-      console.log('Home: Нет userId или инициализация не завершена, пропуск загрузки');
-      return;
-    }
+    if (!user?.userId || !isInitialized) return;
     try {
-      console.log('Home: Загрузка постов для userId:', user.userId);
       const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch('/api/posts', {
         headers: {
           'x-user-id': user.userId,
           'Authorization': `Bearer ${authToken}`,
         },
+        cache: 'no-store',
       });
-      console.log('Home: Ответ от API, статус:', res.status);
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
         throw new Error(errorData.error || `Ошибка загрузки постов (статус: ${res.status})`);
       }
       const data = await res.json();
-      console.log('Home: Получены данные постов:', data);
-      setPosts(data);
+      setPosts(Array.isArray(data) ? data : []);
     } catch (err: any) {
-      console.error('Home: Ошибка загрузки постов:', err);
       setError(err.message || 'Ошибка загрузки постов');
     }
   };
@@ -84,32 +79,40 @@ export default function Home() {
     setError(null);
 
     try {
-      console.log('Home: Отправка поста для userId:', user.userId);
       const authToken = localStorage.getItem('authToken') || '';
+      const headers: Record<string, string> = {
+        'x-user-id': user.userId,
+        'Authorization': `Bearer ${authToken}`,
+      };
+
+      const url = editingPostId ? `/api/posts/${editingPostId}` : '/api/posts';
+      const method = editingPostId ? 'PUT' : 'POST';
       const formData = new FormData();
       formData.append('content', postContent);
-      postImages.forEach((file) => formData.append('images', file));
+      postImages.forEach((file) => formData.append('files', file));
 
-      const res = await fetch('/api/posts', {
-        method: 'POST',
-        headers: {
-          'x-user-id': user.userId,
-          'Authorization': `Bearer ${authToken}`,
-        },
+      const res = await fetch(url, {
+        method,
+        headers,
         body: formData,
       });
 
-      console.log('Home: Ответ от API при создании поста, статус:', res.status);
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
-        throw new Error(errorData.error || `Не удалось создать пост (статус: ${res.status})`);
+        throw new Error(errorData.error || `Не удалось ${editingPostId ? 'обновить' : 'создать'} пост`);
       }
 
-      await fetchPosts();
+      const updatedPost = await res.json();
+      setPosts((prev) =>
+        editingPostId
+          ? prev.map((post) => (post._id === editingPostId ? updatedPost : post))
+          : [updatedPost, ...prev]
+      );
       setPostContent('');
       setPostImages([]);
+      setEditingPostId(null);
+      if (!editingPostId) await fetchPosts();
     } catch (err: any) {
-      console.error('Home: Ошибка создания поста:', err);
       setError(err.message);
     } finally {
       setSubmitting(false);
@@ -123,6 +126,33 @@ export default function Home() {
   const handleFileSelect = () => {
     if (fileInputRef.current) {
       fileInputRef.current.click();
+    }
+  };
+
+  const handleEditPost = async (postId: string, content: string, images: File[]) => {
+    if (!user) return;
+    try {
+      const authToken = localStorage.getItem('authToken') || '';
+      const formData = new FormData();
+      formData.append('content', content);
+      images.forEach((file) => formData.append('files', file));
+
+      const res = await fetch(`/api/posts/${postId}`, {
+        method: 'PUT',
+        headers: {
+          'x-user-id': user.userId,
+          'Authorization': `Bearer ${authToken}`,
+        },
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error((await res.json()).error || 'Не удалось обновить пост');
+      const updatedPost = await res.json();
+      setPosts((prev) => prev.map((post) => (post._id === postId ? updatedPost : post)));
+      setEditingPostId(null);
+      await fetchPosts();
+    } catch (err: any) {
+      setError(err.message);
     }
   };
 
@@ -171,9 +201,7 @@ export default function Home() {
                 <p>Выбранные файлы:</p>
                 <ul>
                   {postImages.map((file, index) => (
-                    <li key={index} className="text-muted">
-                      {file.name}
-                    </li>
+                    <li key={index} className="text-muted">{file.name}</li>
                   ))}
                 </ul>
               </div>
@@ -185,11 +213,25 @@ export default function Home() {
             disabled={submitting || !postContent.trim()}
             className="telegram-post-button"
           >
-            {submitting ? 'Отправка...' : 'Опубликовать'}
+            {submitting ? 'Отправка...' : editingPostId ? 'Обновить' : 'Опубликовать'}
           </Button>
+          {editingPostId && (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setPostContent('');
+                setPostImages([]);
+                setEditingPostId(null);
+              }}
+              disabled={submitting}
+              className="ms-2 telegram-profile-button"
+            >
+              Отмена
+            </Button>
+          )}
         </Form>
         {error && <Alert variant="danger">{error}</Alert>}
-        {posts.length > 0 ? (
+        {Array.isArray(posts) && posts.length > 0 ? (
           posts.map((post) => (
             <Post
               key={post._id}
@@ -201,9 +243,12 @@ export default function Home() {
               images={post.images}
               likes={post.likes}
               reactions={post.reactions}
-              fetchPosts={fetchPosts}
               userAvatar={post.userId.avatar || '/default-avatar.png'}
               comments={post.comments}
+              currentUserId={user.userId}
+              isAdmin={false}
+              fetchPosts={fetchPosts}
+              onEdit={post.userId._id === user.userId ? handleEditPost : undefined}
             />
           ))
         ) : (

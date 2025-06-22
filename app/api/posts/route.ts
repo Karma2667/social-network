@@ -66,19 +66,18 @@ export async function GET(request: Request) {
     const userId = request.headers.get('x-user-id');
     console.log('GET /api/posts: Получен userId из заголовка:', userId);
 
-    if (!userId) {
-      console.log('GET /api/posts: Отсутствует заголовок x-user-id');
-      return NextResponse.json({ error: 'Требуется userId' }, { status: 400 });
-    }
-
     const url = new URL(request.url);
+    const requestedUserId = url.searchParams.get('userId');
     const communityId = url.searchParams.get('communityId');
 
-    const postsQuery = Post.find({
-      ...(communityId && { community: new Types.ObjectId(communityId), isCommunityPost: true }),
-      ...(!communityId && { userId: new Types.ObjectId(userId), isCommunityPost: false }),
-    })
-      .sort({ createdAt: -1 })
+    console.log('GET /api/posts: Получен requestedUserId из параметров:', requestedUserId);
+
+    if (requestedUserId && !mongoose.Types.ObjectId.isValid(requestedUserId)) {
+      console.log('GET /api/posts: Неверный формат requestedUserId:', requestedUserId);
+      return NextResponse.json({ error: 'Неверный формат идентификатора пользователя' }, { status: 400 });
+    }
+
+    let postsQuery = Post.find().sort({ createdAt: -1 })
       .populate({
         path: 'userId',
         model: User,
@@ -94,7 +93,29 @@ export async function GET(request: Request) {
         },
       });
 
-    console.log('GET /api/posts: Инициализирован запрос к коллекции Post с фильтром по', { communityId, userId });
+    // Применяем фильтры только если параметры валидны
+    if (communityId && mongoose.Types.ObjectId.isValid(communityId)) {
+      postsQuery = postsQuery.find({
+        community: new Types.ObjectId(communityId),
+        isCommunityPost: true,
+      });
+    } else if (requestedUserId && mongoose.Types.ObjectId.isValid(requestedUserId)) {
+      postsQuery = postsQuery.find({
+        userId: new Types.ObjectId(requestedUserId),
+        isCommunityPost: false,
+      });
+    } else if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+      postsQuery = postsQuery.find({
+        userId: new Types.ObjectId(userId),
+        isCommunityPost: false,
+      });
+    }
+
+    console.log('GET /api/posts: Инициализирован запрос к коллекции Post с фильтром по', {
+      communityId,
+      requestedUserId,
+      userId,
+    });
     console.log('GET /api/posts: Установлена популяция для userId и комментариев');
 
     const posts = await postsQuery as PopulatedPost[];
@@ -102,7 +123,7 @@ export async function GET(request: Request) {
 
     if (!posts || posts.length === 0) {
       console.log('GET /api/posts: Посты не найдены');
-      return NextResponse.json({ message: 'Посты не найдены' }, { status: 200 });
+      return NextResponse.json([], { status: 200 });
     }
 
     const formattedPosts: PostData[] = posts.map((post: PopulatedPost) => {
@@ -221,6 +242,11 @@ export async function POST(request: Request) {
       console.log('POST /api/posts: Изображения успешно загружены:', images);
     }
 
+    if (isCommunityPost && communityId && !mongoose.Types.ObjectId.isValid(communityId)) {
+      console.log('POST /api/posts: Неверный формат communityId:', communityId);
+      return NextResponse.json({ error: 'Неверный формат communityId' }, { status: 400 });
+    }
+
     if (isCommunityPost) {
       const community = await mongoose.model('Community').findById(communityId);
       if (!community || !community.admins.includes(userId)) {
@@ -235,7 +261,7 @@ export async function POST(request: Request) {
       images,
       comments: [],
       isCommunityPost: isCommunityPost || false,
-      ...(communityId && { community: new Types.ObjectId(communityId) }),
+      ...(communityId && mongoose.Types.ObjectId.isValid(communityId) && { community: new Types.ObjectId(communityId) }),
     };
 
     console.log('POST /api/posts: Данные для создания поста:', JSON.stringify(postData, null, 2));
@@ -311,7 +337,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 
     const isAuthor = post.userId?.toString() === userId;
     let isCommunityAdmin = false;
-    if (post.community) {
+    if (post.community && mongoose.Types.ObjectId.isValid(post.community.toString())) {
       const community = await mongoose.model('Community').findById(post.community).select('creator admins');
       console.log('PUT /api/posts/[id]: Проверка прав сообщества:', { communityId: post.community, creator: community?.creator, admins: community?.admins });
       const isCreator = community?.creator?.toString() === userId;
@@ -412,7 +438,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
     const isAuthor = post.userId?.toString() === userId;
     let isCommunityAdmin = false;
 
-    if (post.community) {
+    if (post.community && mongoose.Types.ObjectId.isValid(post.community.toString())) {
       const community = await mongoose.model('Community').findById(post.community).select('creator admins');
       console.log('DELETE /api/posts/[id]: Проверка прав сообщества:', { communityId: post.community, creator: community?.creator, admins: community?.admins });
       const isCreator = community?.creator?.toString() === userId;
