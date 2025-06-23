@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { connectToDB } from '@/app/lib/mongoDB'; // Исправленный импорт
+import { connectToDB } from '@/app/lib/mongoDB';
 import Community from '@/models/Community';
 import mongoose from 'mongoose';
 import { promises as fs } from 'fs';
@@ -11,16 +11,24 @@ export const config = {
   },
 };
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     console.log('GET /api/communities: Подключение к MongoDB...');
     await connectToDB();
     console.log('GET /api/communities: MongoDB подключен');
 
-    const communities = await Community.find({})
+    const userId = request.headers.get('x-user-id');
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      console.log('GET /api/communities: Отсутствует или неверный userId');
+      return NextResponse.json({ error: 'Требуется валидный userId' }, { status: 400 });
+    }
+
+    const communities = await Community.find({
+      $or: [{ members: userId }, { creator: userId }],
+    })
       .populate('creator', 'username')
       .select('name _id creator avatar interests');
-    console.log('GET /api/communities: Загружены сообщества:', communities);
+    console.log('GET /api/communities: Загружены сообщества для userId', userId, ':', communities);
     return NextResponse.json(communities);
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';

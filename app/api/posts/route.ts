@@ -3,6 +3,7 @@ import { connectToDB } from '@/app/lib/mongoDB';
 import Post, { PostDocument, LeanPostDocument } from '@/models/Post';
 import Comment from '@/models/Comment';
 import User from '@/models/User';
+import Community from '@/models/Community'; // Добавляем импорт Community
 import mongoose, { Types, ObjectId, HydratedDocument } from 'mongoose';
 
 // Обновленный UserDocument с явным указанием _id
@@ -223,7 +224,7 @@ export async function POST(request: Request) {
     }
 
     if (isCommunityPost) {
-      const community = await mongoose.model('Community').findById(communityId);
+      const community = await Community.findById(communityId).select('admins name avatar');
       if (!community || !community.admins.includes(userId)) {
         console.log('POST /api/posts: Недостаточно прав для создания поста сообщества');
         return NextResponse.json({ error: 'Создание постов сообщества доступно только администраторам' }, { status: 403 });
@@ -231,7 +232,7 @@ export async function POST(request: Request) {
     }
 
     const postData = {
-      userId: new Types.ObjectId(userId),
+      userId: isCommunityPost && communityId ? new Types.ObjectId(communityId) : new Types.ObjectId(userId), // Используем communityId для постов сообщества
       content,
       images,
       comments: [],
@@ -244,16 +245,23 @@ export async function POST(request: Request) {
     console.log('POST /api/posts: Пост успешно создан с _id:', post._id);
 
     const user = await User.findById(userId).select('username avatar');
+    const community = isCommunityPost && communityId ? await Community.findById(communityId).select('name avatar') : null;
     const responseData: PostData = {
       _id: post._id.toString(),
       content: post.content,
-      userId: user
+      userId: isCommunityPost && community
+        ? {
+            _id: communityId || '',
+            username: community.name || 'Unknown Community',
+            avatar: community.avatar || '/default-community-avatar.png',
+          }
+        : user
         ? {
             _id: user._id.toString(),
             username: user.username || 'Unknown User',
-            avatar: user.avatar || undefined,
+            avatar: user.avatar || '/default-avatar.png',
           }
-        : { _id: userId, username: 'Unknown User', avatar: undefined },
+        : { _id: userId, username: 'Unknown User', avatar: '/default-avatar.png' },
       communityId: post.community?.toString(),
       isCommunityPost: post.isCommunityPost || false,
       createdAt: post.createdAt.toISOString(),
@@ -312,7 +320,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const isAuthor = post.userId?.toString() === userId;
     let isCommunityAdmin = false;
     if (post.community && mongoose.Types.ObjectId.isValid(post.community.toString())) {
-      const community = await mongoose.model('Community').findById(post.community).select('creator admins');
+      const community = await Community.findById(post.community).select('creator admins');
       console.log('PUT /api/posts/[id]: Проверка прав сообщества:', { communityId: post.community, creator: community?.creator, admins: community?.admins });
       const isCreator = community?.creator?.toString() === userId;
       isCommunityAdmin = isCreator || (community?.admins?.includes(userId) || false);
@@ -412,7 +420,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
     let isCommunityAdmin = false;
 
     if (post.community && mongoose.Types.ObjectId.isValid(post.community.toString())) {
-      const community = await mongoose.model('Community').findById(post.community).select('creator admins');
+      const community = await Community.findById(post.community).select('creator admins');
       console.log('DELETE /api/posts/[id]: Проверка прав сообщества:', { communityId: post.community, creator: community?.creator, admins: community?.admins });
       const isCreator = community?.creator?.toString() === userId;
       isCommunityAdmin = isCreator || (community?.admins?.includes(userId) || false);
