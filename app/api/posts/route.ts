@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { connectToDB } from '@/app/lib/mongoDB';
-import Post, { PostDocument, LeanPostDocument, UserDocument } from '@/models/Post';
+import Post, { PostDocument, LeanPostDocument } from '@/models/Post';
 import Comment from '@/models/Comment';
 import User from '@/models/User';
 import Community from '@/models/Community';
@@ -69,18 +69,17 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const endpoint = url.pathname;
   const userId = url.searchParams.get('userId');
+  const communityId = url.searchParams.get('communityId');
   const isCommunityPost = url.searchParams.get('isCommunityPost') === 'true';
 
   console.time(`GET ${endpoint}: Total`);
-  console.log(`GET ${endpoint}: Запрос получен, URL:`, request.url, `userId:`, userId);
+  console.log(`GET ${endpoint}: Запрос получен, URL:`, request.url, `userId:`, userId, `communityId:`, communityId);
 
   try {
     await connectToDB();
     console.log(`GET ${endpoint}: Успешное подключение к MongoDB`);
 
     const authUserId = request.headers.get('x-user-id');
-    console.log(`GET ${endpoint}: Получен authUserId из заголовка:`, authUserId);
-
     if (!authUserId || !mongoose.Types.ObjectId.isValid(authUserId)) {
       console.log(`GET ${endpoint}: Отсутствует или неверный authUserId`);
       return NextResponse.json({ error: 'Требуется валидный authUserId' }, { status: 400 });
@@ -91,7 +90,12 @@ export async function GET(request: Request) {
       query.userId = userId;
       console.log(`GET ${endpoint}: Фильтрация по userId:`, userId);
     }
-    if (isCommunityPost !== undefined) {
+    if (communityId && mongoose.Types.ObjectId.isValid(communityId)) {
+      query.community = communityId;
+      query.isCommunityPost = true;
+      console.log(`GET ${endpoint}: Фильтрация по communityId:`, communityId);
+    }
+    if (isCommunityPost !== undefined && !communityId) {
       query.isCommunityPost = isCommunityPost;
       console.log(`GET ${endpoint}: Фильтрация по isCommunityPost:`, isCommunityPost);
     }
@@ -254,16 +258,20 @@ export async function POST(request: Request) {
 
     let community: CommunityDocument | null = null;
     if (isCommunityPost && communityId) {
-      const communityResult = await Community.findById(communityId).select('admins name avatar').lean() as CommunityDocument | null;
+      const communityResult = await Community.findById(communityId).select('admins name avatar creator').lean() as CommunityDocument | null;
       community = communityResult;
-      if (!community || !community.admins.includes(userId)) {
+      if (!community) {
+        console.log('POST /api/posts: Сообщество не найдено:', communityId);
+        return NextResponse.json({ error: 'Сообщество не найдено' }, { status: 404 });
+      }
+      if (!community.admins.includes(userId) && community.creator.toString() !== userId) {
         console.log('POST /api/posts: Недостаточно прав для создания поста сообщества');
-        return NextResponse.json({ error: 'Создание постов сообщества доступно только администраторам' }, { status: 403 });
+        return NextResponse.json({ error: 'Создание постов сообщества доступно только администраторам или создателю' }, { status: 403 });
       }
     }
 
     const postData = {
-      userId: isCommunityPost && communityId ? new Types.ObjectId(communityId) : new Types.ObjectId(userId),
+      userId: new Types.ObjectId(userId),
       content,
       images,
       comments: [],

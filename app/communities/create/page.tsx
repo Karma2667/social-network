@@ -121,13 +121,13 @@ export default function CreateCommunity() {
       <Row>
         <Col md={{ span: 6, offset: 3 }}>
           <Button variant="primary" href="/communities" className="mb-3">
-            Back to Communities
+            Назад к списку сообществ
           </Button>
-          <h2>Create a Community</h2>
+          <h2>Создание сообщества</h2>
           {error && <Alert variant="danger">{error}</Alert>}
           <Form onSubmit={handleSubmit}>
             <Form.Group className="mb-3" controlId="name">
-              <Form.Label>Name</Form.Label>
+              <Form.Label>Название</Form.Label>
               <Form.Control
                 type="text"
                 value={name}
@@ -137,17 +137,17 @@ export default function CreateCommunity() {
             </Form.Group>
 
             <Form.Group className="mb-3" controlId="avatar">
-              <Form.Label>Avatar</Form.Label>
+              <Form.Label>Аватар</Form.Label>
               <Form.Control
                 type="file"
                 accept="image/*"
                 onChange={handleAvatarChange}
               />
-              {avatar && <p className="mt-1">Selected: {avatar.name}</p>}
+              {avatar && <p className="mt-1">Выбранное: {avatar.name}</p>}
             </Form.Group>
 
             <Form.Group className="mb-3" controlId="description">
-              <Form.Label>Description</Form.Label>
+              <Form.Label>Описание</Form.Label>
               <Form.Control
                 as="textarea"
                 rows={3}
@@ -158,7 +158,7 @@ export default function CreateCommunity() {
             </Form.Group>
 
             <Form.Group className="mb-3" controlId="interests">
-              <Form.Label>Interests</Form.Label>
+              <Form.Label>Интересы</Form.Label>
               <div className="mb-2">
                 {interests.length > 0 ? (
                   interests.map((interest) => (
@@ -167,7 +167,7 @@ export default function CreateCommunity() {
                     </span>
                   ))
                 ) : (
-                  <p>No interests selected</p>
+                  <p>Интересы не выбраны</p>
                 )}
               </div>
               <Button
@@ -175,14 +175,14 @@ export default function CreateCommunity() {
                 onClick={() => setShowInterestsModal(true)}
                 className="mb-3"
               >
-                Select Interests
+                Выбрать интересы
               </Button>
             </Form.Group>
 
             <Form.Group className="mb-3" controlId="members">
-              <Form.Label>Add Members (Friends)</Form.Label>
+              <Form.Label>Добавление пользователей (друзей)</Form.Label>
               {friends.length === 0 ? (
-                <p>No friends available</p>
+                <p>Нет друзей</p>
               ) : (
                 friends.map((friend) => (
                   <FormCheck
@@ -197,13 +197,13 @@ export default function CreateCommunity() {
             </Form.Group>
 
             <Button variant="primary" type="submit" disabled={!name.trim()}>
-              Create
+              Создать
             </Button>
           </Form>
 
           <Modal show={showInterestsModal} onHide={() => setShowInterestsModal(false)}>
             <Modal.Header closeButton>
-              <Modal.Title>Select Interests</Modal.Title>
+              <Modal.Title>Выбранные интересы</Modal.Title>
             </Modal.Header>
             <Modal.Body>
               {PREDEFINED_INTERESTS.map((interest) => (
@@ -217,7 +217,7 @@ export default function CreateCommunity() {
                 />
               ))}
               <Form.Group className="mt-3">
-                <Form.Label>Add Custom Interest</Form.Label>
+                <Form.Label>Добавить свой интерес</Form.Label>
                 <Form.Control
                   type="text"
                   value={customInterest}
@@ -231,7 +231,7 @@ export default function CreateCommunity() {
                   onClick={handleAddCustomInterest}
                   disabled={!customInterest.trim() || interests.length >= 5}
                 >
-                  Add
+                  Добавить
                 </Button>
               </Form.Group>
             </Modal.Body>
@@ -240,13 +240,13 @@ export default function CreateCommunity() {
                 variant="secondary"
                 onClick={() => setShowInterestsModal(false)}
               >
-                Close
+                Закрыть
               </Button>
               <Button
                 variant="primary"
                 onClick={() => setShowInterestsModal(false)}
               >
-                Save
+                Сохранить
               </Button>
             </Modal.Footer>
           </Modal>

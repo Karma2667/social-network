@@ -3,21 +3,21 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/app/lib/AuthContext';
-import { 
-  Container, 
-  Row, 
-  Col, 
-  FormControl, 
-  ListGroup, 
-  Alert, 
-  Modal, 
-  Image, 
-  OverlayTrigger, 
-  Tooltip, 
-  Button, 
-  Form, 
-  FormGroup, 
-  FormLabel 
+import {
+  Container,
+  Row,
+  Col,
+  FormControl,
+  ListGroup,
+  Alert,
+  Modal,
+  Image,
+  OverlayTrigger,
+  Tooltip,
+  Button,
+  Form,
+  FormGroup,
+  FormLabel,
 } from 'react-bootstrap';
 import { Pencil, Trash, Plus, Paperclip } from 'react-bootstrap-icons';
 import EmojiPicker from '@/app/Components/EmojiPicker';
@@ -98,20 +98,28 @@ export default function CommunityPage() {
   const [postContent, setPostContent] = useState('');
   const [postImages, setPostImages] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [isCommunityLoaded, setIsCommunityLoaded] = useState(false); // New flag to trigger fetchPosts
+  const [isCommunityLoaded, setIsCommunityLoaded] = useState(false);
 
   const fetchCommunity = async () => {
     if (!user?.userId || !isInitialized || !id) {
       setError('Пользователь или ID сообщества не инициализированы');
+      setLoading(false);
       return;
     }
     setLoading(true);
     try {
+      const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch(`/api/communities/${id}`, {
-        headers: { 'x-user-id': user.userId },
+        headers: {
+          'x-user-id': user.userId,
+          'Authorization': `Bearer ${authToken}`,
+        },
         cache: 'no-store',
       });
-      if (!res.ok) throw new Error(await res.text() || 'Не удалось загрузить сообщество');
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
+        throw new Error(errorData.error || 'Не удалось загрузить сообщество');
+      }
       const data = await res.json();
       console.log('Полученные данные сообщества:', data);
       if (data && data._id) {
@@ -122,14 +130,18 @@ export default function CommunityPage() {
           interests: Array.isArray(data.interests) ? data.interests : [],
           avatar: data.avatar || '/default-community-avatar.png',
           creator: data.creator ? { _id: data.creator._id, username: data.creator.username } : null,
-          members: Array.isArray(data.members) ? data.members.map((m: any) => ({ _id: m._id, username: m.username })) : [],
-          admins: Array.isArray(data.admins) ? data.admins.map((a: any) => ({ _id: a._id, username: a.username })) : [],
+          members: Array.isArray(data.members)
+            ? data.members.map((m: any) => ({ _id: m._id, username: m.username }))
+            : [],
+          admins: Array.isArray(data.admins)
+            ? data.admins.map((a: any) => ({ _id: a._id, username: a.username }))
+            : [],
         };
         setCommunity(updatedCommunity);
         setNewName(updatedCommunity.name);
         setNewDescription(updatedCommunity.description || '');
         setNewInterests(updatedCommunity.interests.join(', '));
-        setIsCommunityLoaded(true); // Set flag when community is loaded
+        setIsCommunityLoaded(true);
       } else {
         throw new Error('Некорректные данные сообщества');
       }
@@ -156,16 +168,21 @@ export default function CommunityPage() {
         },
         cache: 'no-store',
       });
-      if (!res.ok) throw new Error(await res.text() || 'Не удалось загрузить список сообществ');
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
+        throw new Error(errorData.error || 'Не удалось загрузить список сообществ');
+      }
       const data = await res.json();
       console.log('Полученные сообщества:', data);
       if (Array.isArray(data)) {
-        setCommunities(data.map((item: any) => ({
-          _id: item._id,
-          name: item.name,
-          avatar: item.avatar || '/default-community-avatar.png',
-          creator: item.creator || null,
-        })));
+        setCommunities(
+          data.map((item: any) => ({
+            _id: item._id,
+            name: item.name,
+            avatar: item.avatar || '/default-community-avatar.png',
+            creator: item.creator || null,
+          }))
+        );
       } else {
         console.error('Неверный формат данных сообществ:', data);
         setCommunities([]);
@@ -188,6 +205,7 @@ export default function CommunityPage() {
           'x-user-id': user.userId,
           'Authorization': `Bearer ${authToken}`,
         },
+        cache: 'no-store',
       });
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
@@ -196,19 +214,17 @@ export default function CommunityPage() {
       const data = await res.json();
       console.log('Полученные посты:', data);
       if (Array.isArray(data)) {
-        setPosts(data.map(post => {
-          if (post.isCommunityPost && community) {
-            return {
-              ...post,
-              userId: {
-                _id: community._id,
-                username: community.name,
-                avatar: community.avatar,
-              },
-            };
-          }
-          return post;
-        }));
+        const filteredPosts = data.filter((post: PostData) => post.communityId === id && post.isCommunityPost);
+        setPosts(
+          filteredPosts.map((post: PostData) => ({
+            ...post,
+            userId: {
+              _id: community?._id || post.userId._id,
+              username: community?.name || post.userId.username,
+              avatar: community?.avatar || post.userId.avatar || '/default-community-avatar.png',
+            },
+          }))
+        );
       } else if (data.message === 'Посты не найдены') {
         setPosts([]);
       } else {
@@ -227,16 +243,26 @@ export default function CommunityPage() {
       return;
     }
     try {
+      const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch('/api/friends', {
-        headers: { 'x-user-id': user.userId },
+        headers: {
+          'x-user-id': user.userId,
+          'Authorization': `Bearer ${authToken}`,
+        },
+        cache: 'no-store',
       });
-      if (!res.ok) throw new Error('Не удалось загрузить список друзей');
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
+        throw new Error(errorData.error || 'Не удалось загрузить список друзей');
+      }
       const data = await res.json();
       if (data && Array.isArray(data.friends)) {
-        setFriends(data.friends.map((friend: any) => ({
-          _id: friend._id.toString(),
-          username: friend.username || 'Unknown',
-        })));
+        setFriends(
+          data.friends.map((friend: any) => ({
+            _id: friend._id.toString(),
+            username: friend.username || 'Unknown',
+          }))
+        );
       } else {
         console.error('Неверный формат данных друзей:', data);
         setFriends([]);
@@ -259,12 +285,19 @@ export default function CommunityPage() {
       formData.append('interests', newInterests || '');
       if (avatarFile) formData.append('avatar', avatarFile);
 
+      const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch(`/api/communities/${id}`, {
         method: 'PUT',
-        headers: { 'x-user-id': user.userId },
+        headers: {
+          'x-user-id': user.userId,
+          'Authorization': `Bearer ${authToken}`,
+        },
         body: formData,
       });
-      if (!res.ok) throw new Error(await res.text() || 'Не удалось обновить сообщество');
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
+        throw new Error(errorData.error || 'Не удалось обновить сообщество');
+      }
       const updatedCommunity = await res.json();
       setCommunity(updatedCommunity);
       setIsEditing(false);
@@ -279,11 +312,18 @@ export default function CommunityPage() {
     if (!community || !user?.userId || !isAdmin) return;
     if (!window.confirm('Вы уверены, что хотите удалить это сообщество?')) return;
     try {
+      const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch(`/api/communities/${id}`, {
         method: 'DELETE',
-        headers: { 'x-user-id': user.userId },
+        headers: {
+          'x-user-id': user.userId,
+          'Authorization': `Bearer ${authToken}`,
+        },
       });
-      if (!res.ok) throw new Error('Не удалось удалить сообщество');
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
+        throw new Error(errorData.error || 'Не удалось удалить сообщество');
+      }
       router.push('/communities');
     } catch (err: any) {
       console.error('Ошибка удаления сообщества:', err);
@@ -301,15 +341,20 @@ export default function CommunityPage() {
       return;
     }
     try {
+      const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch(`/api/communities/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': user.userId,
+          'Authorization': `Bearer ${authToken}`,
         },
         body: JSON.stringify({ action: 'removeMember', memberId }),
       });
-      if (!res.ok) throw new Error(await res.text() || 'Не удалось удалить пользователя');
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
+        throw new Error(errorData.error || 'Не удалось удалить пользователя');
+      }
       const updatedCommunity = await res.json();
       setCommunity(updatedCommunity);
     } catch (err: any) {
@@ -324,21 +369,26 @@ export default function CommunityPage() {
       return;
     }
     try {
+      const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch(`/api/communities/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': user.userId,
+          'Authorization': `Bearer ${authToken}`,
         },
         body: JSON.stringify({ action: 'addMember', memberId: friendId }),
       });
-      if (!res.ok) throw new Error(await res.text() || 'Не удалось добавить пользователя');
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
+        throw new Error(errorData.error || 'Не удалось добавить пользователя');
+      }
       const updatedCommunity = await res.json();
       setCommunity(updatedCommunity);
       setShowAddFriendModal(false);
     } catch (err: any) {
       console.error('Ошибка добавления пользователя:', err);
-      setError(err.message);
+      setError(err.message || 'Не удалось добавить пользователя');
     }
   };
 
@@ -348,18 +398,23 @@ export default function CommunityPage() {
       return;
     }
     try {
+      const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch(`/api/communities/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': user.userId,
+          'Authorization': `Bearer ${authToken}`,
         },
         body: JSON.stringify({
           action: isModerator ? 'removeModerator' : 'addModerator',
           memberId,
         }),
       });
-      if (!res.ok) throw new Error(await res.text() || 'Не удалось обновить статус модератора');
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
+        throw new Error(errorData.error || 'Не удалось обновить статус модератора');
+      }
       const updatedCommunity = await res.json();
       setCommunity(updatedCommunity);
     } catch (err: any) {
@@ -426,8 +481,8 @@ export default function CommunityPage() {
       });
 
       if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(errorText || `Ошибка удаления постов (статус: ${res.status})`);
+        const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
+        throw new Error(errorData.error || `Ошибка удаления поста (статус: ${res.status})`);
       }
 
       await fetchPosts();
@@ -450,11 +505,11 @@ export default function CommunityPage() {
       const fetchData = async () => {
         setLoading(true);
         try {
-          await fetchCommunities(); // Fetch community list
+          await fetchCommunities();
           if (id) {
-            await fetchCommunity(); // Fetch specific community
+            await fetchCommunity();
           }
-          await fetchFriends(); // Fetch friends
+          await fetchFriends();
           console.log('CommunityPage: Данные загружены, community:', community, 'communities:', communities, 'posts:', posts);
         } catch (err) {
           console.error('Ошибка при загрузке данных:', err);
@@ -467,14 +522,16 @@ export default function CommunityPage() {
     }
   }, [isInitialized, user, id]);
 
-  // Separate effect to fetch posts when community is loaded
   useEffect(() => {
     if (isCommunityLoaded && id) {
       fetchPosts();
     }
   }, [isCommunityLoaded, id]);
 
-  const isAdmin = community?.admins.some((admin) => admin._id === user?.userId) || false;
+  const isAdmin =
+    community?.admins.some((admin) => admin._id === user?.userId) ||
+    community?.creator?._id === user?.userId ||
+    false;
 
   const filteredCommunities = communities.filter((comm) =>
     comm.name.toLowerCase().includes(search.toLowerCase())
@@ -627,18 +684,22 @@ export default function CommunityPage() {
                   <Button
                     variant={community.members.some((m) => m._id === user.userId) ? 'outline-danger' : 'outline-primary'}
                     onClick={async () => {
+                      const authToken = localStorage.getItem('authToken') || '';
                       const url = `/api/communities/${id}/subscribe`;
                       const method = community.members.some((m) => m._id === user.userId) ? 'DELETE' : 'POST';
                       const res = await fetch(url, {
                         method,
-                        headers: { 'x-user-id': user.userId },
+                        headers: {
+                          'x-user-id': user.userId,
+                          'Authorization': `Bearer ${authToken}`,
+                        },
                       });
                       if (res.ok) {
                         await fetchCommunity();
                         await fetchPosts();
                       } else {
-                        const error = await res.json();
-                        setError(error.error || 'Ошибка подписки/отписки');
+                        const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
+                        setError(errorData.error || 'Ошибка подписки/отписки');
                       }
                     }}
                     className="mt-2"
