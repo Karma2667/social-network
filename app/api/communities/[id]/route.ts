@@ -116,31 +116,92 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ error: 'Недостаточно прав для выполнения действия' }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { action, memberId } = body;
-
-    if (!action || !memberId || !mongoose.Types.ObjectId.isValid(memberId)) {
-      console.log(`PUT /api/communities/${id}: Неверные параметры запроса`, body);
-      return NextResponse.json({ error: 'Неверные параметры запроса' }, { status: 400 });
+    // Проверка Content-Type
+    const contentType = request.headers.get('content-type');
+    if (!contentType?.includes('application/json')) {
+      console.log(`PUT /api/communities/${id}: Неверный Content-Type`, contentType);
+      return NextResponse.json({ error: 'Ожидается Content-Type: application/json' }, { status: 400 });
     }
 
-    const user = await User.findById(memberId);
-    if (!user) {
-      console.log(`PUT /api/communities/${id}: Пользователь ${memberId} не найден`);
-      return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 });
+    // Безопасный парсинг тела запроса
+    let body;
+    try {
+      const text = await request.text();
+      console.log(`PUT /api/communities/${id}: Тело запроса (raw):`, text);
+      if (!text) {
+        console.log(`PUT /api/communities/${id}: Пустое тело запроса`);
+        return NextResponse.json({ error: 'Тело запроса не может быть пустым' }, { status: 400 });
+      }
+      body = JSON.parse(text);
+    } catch (parseError: any) {
+      console.error(`PUT /api/communities/${id}: Ошибка парсинга JSON:`, parseError.message);
+      return NextResponse.json({ error: 'Некорректный формат JSON', details: parseError.message }, { status: 400 });
+    }
+
+    const { action, name, description, interests, avatar, memberId } = body;
+
+    console.log(`PUT /api/communities/${id}: Получены данные`, { action, name, description, interests, avatar, memberId });
+
+    if (!action) {
+      console.log(`PUT /api/communities/${id}: Требуется action`);
+      return NextResponse.json({ error: 'Требуется action' }, { status: 400 });
     }
 
     switch (action) {
+      case 'editCommunity':
+        // Валидация данных для редактирования сообщества
+        if (!name || typeof name !== 'string' || name.trim().length < 3) {
+          console.log(`PUT /api/communities/${id}: Неверное имя сообщества`);
+          return NextResponse.json({ error: 'Имя сообщества должно быть строкой не короче 3 символов' }, { status: 400 });
+        }
+
+        if (description && typeof description !== 'string') {
+          console.log(`PUT /api/communities/${id}: Неверное описание`);
+          return NextResponse.json({ error: 'Описание должно быть строкой' }, { status: 400 });
+        }
+
+        if (interests && (!Array.isArray(interests) || interests.some((i: any) => typeof i !== 'string'))) {
+          console.log(`PUT /api/communities/${id}: Неверные интересы`);
+          return NextResponse.json({ error: 'Интересы должны быть массивом строк' }, { status: 400 });
+        }
+
+        if (avatar && typeof avatar !== 'string') {
+          console.log(`PUT /api/communities/${id}: Неверный аватар`);
+          return NextResponse.json({ error: 'Аватар должен быть строкой (URL)' }, { status: 400 });
+        }
+
+        // Обновление полей сообщества
+        community.name = name.trim();
+        if (description !== undefined) community.description = description.trim();
+        if (interests) community.interests = interests.map((i: string) => i.trim());
+        if (avatar) community.avatar = avatar;
+
+        break;
+
       case 'addMember':
+        if (!memberId || !mongoose.Types.ObjectId.isValid(memberId)) {
+          console.log(`PUT /api/communities/${id}: Неверный memberId`);
+          return NextResponse.json({ error: 'Неверный memberId' }, { status: 400 });
+        }
+        const userToAdd = await User.findById(memberId);
+        if (!userToAdd) {
+          console.log(`PUT /api/communities/${id}: Пользователь ${memberId} не найден`);
+          return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 });
+        }
         if (community.members.includes(memberId)) {
           console.log(`PUT /api/communities/${id}: Пользователь уже является членом сообщества`);
           return NextResponse.json({ error: 'Пользователь уже является членом сообщества' }, { status: 400 });
         }
         community.members.push(new mongoose.Types.ObjectId(memberId));
-        user.communities.push(community._id);
+        userToAdd.communities.push(community._id);
+        await userToAdd.save({ validateModifiedOnly: true });
         break;
 
       case 'removeMember':
+        if (!memberId || !mongoose.Types.ObjectId.isValid(memberId)) {
+          console.log(`PUT /api/communities/${id}: Неверный memberId`);
+          return NextResponse.json({ error: 'Неверный memberId' }, { status: 400 });
+        }
         if (!community.members.includes(memberId)) {
           console.log(`PUT /api/communities/${id}: Пользователь не является членом сообщества`);
           return NextResponse.json({ error: 'Пользователь не является членом сообщества' }, { status: 400 });
@@ -150,10 +211,18 @@ export async function PUT(request: Request, { params }: { params: { id: string }
           return NextResponse.json({ error: 'Нельзя удалить себя из сообщества' }, { status: 400 });
         }
         community.members = community.members.filter((m: mongoose.Types.ObjectId) => m.toString() !== memberId);
-        user.communities = user.communities.filter((c: mongoose.Types.ObjectId) => c.toString() !== id);
+        const userToRemove = await User.findById(memberId);
+        if (userToRemove) {
+          userToRemove.communities = userToRemove.communities.filter((c: mongoose.Types.ObjectId) => c.toString() !== id);
+          await userToRemove.save({ validateModifiedOnly: true });
+        }
         break;
 
       case 'addModerator':
+        if (!memberId || !mongoose.Types.ObjectId.isValid(memberId)) {
+          console.log(`PUT /api/communities/${id}: Неверный memberId`);
+          return NextResponse.json({ error: 'Неверный memberId' }, { status: 400 });
+        }
         if (community.admins.includes(memberId)) {
           console.log(`PUT /api/communities/${id}: Пользователь уже является модератором`);
           return NextResponse.json({ error: 'Пользователь уже является модератором' }, { status: 400 });
@@ -166,6 +235,10 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         break;
 
       case 'removeModerator':
+        if (!memberId || !mongoose.Types.ObjectId.isValid(memberId)) {
+          console.log(`PUT /api/communities/${id}: Неверный memberId`);
+          return NextResponse.json({ error: 'Неверный memberId' }, { status: 400 });
+        }
         if (!community.admins.includes(memberId)) {
           console.log(`PUT /api/communities/${id}: Пользователь не является модератором`);
           return NextResponse.json({ error: 'Пользователь не является модератором' }, { status: 400 });
@@ -179,7 +252,6 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     }
 
     await community.save();
-    await user.save({ validateModifiedOnly: true });
 
     const updatedCommunity = await Community.findById(id)
       .populate('creator', 'username _id')
@@ -187,14 +259,14 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       .populate('admins', 'username _id')
       .select('name description interests avatar creator members admins createdAt updatedAt');
 
-    console.log(`PUT /api/communities/${id}: Сообщество обновлено, действие: ${action}, memberId: ${memberId}`);
+    console.log(`PUT /api/communities/${id}: Сообщество обновлено, действие: ${action}`);
     console.timeEnd(`PUT /api/communities/${id}: Total`);
     return NextResponse.json(updatedCommunity, { status: 200 });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
     console.error(`PUT /api/communities/${id}: Ошибка:`, errorMessage, error);
     console.timeEnd(`PUT /api/communities/${id}: Total`);
-    return NextResponse.json({ error: 'Ошибка обновления сообщества', details: errorMessage }, { status: 500 });
+    return NextResponse.json({ error: 'Не удалось обновить сообщество', details: errorMessage }, { status: 500 });
   }
 }
 
@@ -224,16 +296,10 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
       return NextResponse.json({ error: 'Только создатель или администратор может удалить сообщество' }, { status: 403 });
     }
 
-    // Удаление связанных постов
     await Post.deleteMany({ community: id });
-
-    // Удаление сообщества из списка сообществ у пользователей
-    await User.updateMany(
-      { communities: id },
-      { $pull: { communities: id } }
-    );
-
+    await User.updateMany({ communities: id }, { $pull: { communities: id } });
     await Community.deleteOne({ _id: id });
+
     console.log(`DELETE /api/communities/${id}: Сообщество успешно удалено, id: ${id}`);
     console.timeEnd(`DELETE /api/communities/${id}: Total`);
     return NextResponse.json({ message: 'Сообщество успешно удалено' }, { status: 200 });

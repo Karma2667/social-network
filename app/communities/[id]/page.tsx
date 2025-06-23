@@ -273,38 +273,99 @@ export default function CommunityPage() {
     }
   };
 
+  const handleAvatarUpload = async (file: File, userId: string): Promise<string> => {
+    if (!file) {
+      throw new Error('Файл не предоставлен');
+    }
+    const formData = new FormData();
+    formData.append('file', file);
+    const authToken = localStorage.getItem('authToken') || '';
+    
+    console.log('POST /api/upload: Загрузка аватара', file.name);
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: {
+        'x-user-id': userId,
+        'Authorization': `Bearer ${authToken}`,
+      },
+      body: formData,
+    });
+    
+    console.log('POST /api/upload: Ответ:', res.status, res.statusText);
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ error: 'Ошибка загрузки' }));
+      throw new Error(errorData.error || 'Не удалось загрузить аватар');
+    }
+    
+    const { url } = await res.json();
+    return url;
+  };
+
   const handleEdit = async () => {
     if (!community || !user?.userId || !isAdmin || loading) {
       setError('Сообщество или пользователь не инициализированы, или данные загружаются');
       return;
     }
+    
+    setSubmitting(true);
+    setError(null);
+    
     try {
-      const formData = new FormData();
-      formData.append('name', newName || '');
-      formData.append('description', newDescription || '');
-      formData.append('interests', newInterests || '');
-      if (avatarFile) formData.append('avatar', avatarFile);
-
+      // Валидация
+      if (!newName || newName.trim().length < 3) {
+        throw new Error('Имя сообщества должно быть не короче 3 символов');
+      }
+      
+      // Преобразование строки интересов в массив
+      const interestsArray = newInterests
+        ? newInterests.split(',').map((i) => i.trim()).filter((i) => i)
+        : [];
+      
+      // Загрузка аватара, если выбран
+      let avatarUrl = community.avatar;
+      if (avatarFile) {
+        avatarUrl = await handleAvatarUpload(avatarFile, user.userId);
+      }
+      
+      // Формирование JSON-данных
+      const body = {
+        action: 'editCommunity',
+        name: newName.trim(),
+        description: newDescription.trim() || '',
+        interests: interestsArray,
+        avatar: avatarUrl,
+      };
+      
+      console.log(`PUT /api/communities/${id}: Отправляемые данные`, body);
+      
       const authToken = localStorage.getItem('authToken') || '';
       const res = await fetch(`/api/communities/${id}`, {
         method: 'PUT',
         headers: {
+          'Content-Type': 'application/json',
           'x-user-id': user.userId,
           'Authorization': `Bearer ${authToken}`,
         },
-        body: formData,
+        body: JSON.stringify(body),
       });
+      
+      console.log(`PUT /api/communities/${id}: Ответ:`, res.status, res.statusText);
+      
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
         throw new Error(errorData.error || 'Не удалось обновить сообщество');
       }
+      
       const updatedCommunity = await res.json();
       setCommunity(updatedCommunity);
       setIsEditing(false);
       setShowModal(false);
+      setAvatarFile(null); // Сброс файла после успешного редактирования
     } catch (err: any) {
-      console.error('Ошибка обновления сообщества:', err);
-      setError(err.message);
+      console.error('Ошибка обновления сообщества:', err.message);
+      setError(err.message || 'Не удалось обновить сообщество');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -756,7 +817,9 @@ export default function CommunityPage() {
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowModal(false)}>Отмена</Button>
-          <Button variant="primary" onClick={handleEdit}>Сохранить</Button>
+          <Button variant="primary" onClick={handleEdit} disabled={submitting}>
+            {submitting ? 'Сохранение...' : 'Сохранить'}
+          </Button>
         </Modal.Footer>
       </Modal>
 
