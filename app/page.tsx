@@ -13,6 +13,12 @@ interface UserData {
   avatar?: string;
 }
 
+interface CommunityData {
+  _id: string;
+  name: string;
+  avatar: string;
+}
+
 interface CommentData {
   _id: string;
   userId: UserData;
@@ -46,6 +52,7 @@ export default function Home() {
   const [submitting, setSubmitting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [communities, setCommunities] = useState<Record<string, CommunityData>>({});
 
   const fetchPosts = async () => {
     if (!user?.userId || !isInitialized) return;
@@ -65,7 +72,46 @@ export default function Home() {
         throw new Error(errorData.error || `Ошибка загрузки ленты новостей (статус: ${res.status})`);
       }
       const data = await res.json();
-      setPosts(Array.isArray(data) ? data : []);
+      const postsData = Array.isArray(data) ? data : [];
+
+      // Fetch community data for community posts
+      const communityIds = new Set(postsData.filter((post: PostData) => post.isCommunityPost && post.communityId).map((post: PostData) => post.communityId!));
+      const communityPromises: Promise<Record<string, CommunityData> | null>[] = Array.from(communityIds).map(async (communityId) => {
+        const communityRes = await fetch(`/api/communities/${communityId}`, { headers });
+        if (communityRes.ok) {
+          const communityData = await communityRes.json();
+          return {
+            [communityId]: {
+              _id: communityData._id,
+              name: communityData.name,
+              avatar: communityData.avatar || '/default-community-avatar.png',
+            },
+          };
+        }
+        return null;
+      });
+      const communityResults = await Promise.all(communityPromises);
+      const updatedCommunities: Record<string, CommunityData> = communityResults
+        .filter((result): result is Record<string, CommunityData> => result !== null)
+        .reduce((acc, curr) => ({ ...acc, ...curr }), {});
+
+      // Map posts with community data
+      const mappedPosts = postsData.map((post: PostData) => {
+        if (post.isCommunityPost && post.communityId && updatedCommunities[post.communityId]) {
+          return {
+            ...post,
+            userId: {
+              _id: updatedCommunities[post.communityId]._id,
+              username: updatedCommunities[post.communityId].name,
+              avatar: updatedCommunities[post.communityId].avatar,
+            },
+          };
+        }
+        return post;
+      });
+
+      setCommunities((prev) => ({ ...prev, ...updatedCommunities }));
+      setPosts(mappedPosts);
     } catch (err: any) {
       setError(err.message || 'Ошибка загрузки ленты новостей');
     }
@@ -195,7 +241,7 @@ export default function Home() {
   return (
     <Container fluid>
       <div className="p-3 telegram-posts">
-        <h5>Все посты</h5> {/* Изменил заголовок для отражения всех постов */}
+        <h5>Все посты</h5>
         <Form onSubmit={handlePostSubmit} className="mb-3">
           <Form.Group className="mb-3 position-relative">
             <Form.Control
@@ -289,6 +335,8 @@ export default function Home() {
               comments={post.comments}
               currentUserId={user.userId}
               isAdmin={false}
+              isCommunityPost={post.isCommunityPost}
+              communityId={post.communityId}
               fetchPosts={fetchPosts}
               onEdit={post.userId._id === user.userId ? handleEditPost : undefined}
             />
