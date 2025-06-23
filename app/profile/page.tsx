@@ -71,6 +71,7 @@ export default function ProfilePage() {
   const [interests, setInterests] = useState<string[]>([]);
   const [posts, setPosts] = useState<PostData[]>([]);
   const [showInterestsModal, setShowInterestsModal] = useState(false);
+  const [showAboutMeModal, setShowAboutMeModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -117,7 +118,7 @@ export default function ProfilePage() {
           throw new Error(`Не удалось загрузить посты: ${errorData.message || 'Неизвестная ошибка'}`);
         }
         const postsData: PostData[] = await postsRes.json();
-        setPosts(postsData.filter((post) => !post.isCommunityPost));
+        setPosts(postsData.filter((post) => post.isCommunityPost !== true));
       } catch (err: any) {
         setError(err.message || 'Произошла ошибка при загрузке данных');
       } finally {
@@ -229,29 +230,29 @@ export default function ProfilePage() {
   };
 
   const handleDeletePost = async (postId: string) => {
-  if (!user) return;
-  if (!confirm('Вы уверены, что хотите удалить этот пост?')) return;
-  setError(null);
-  try {
-    setSubmitting(true);
-    const authToken = localStorage.getItem('authToken') || '';
-    const headers: Record<string, string> = { Authorization: `Bearer ${authToken}`, 'x-user-id': user.userId };
-    console.log(`Sending DELETE request to /api/posts/${postId} with headers:`, headers);
-    const res = await fetch(`/api/posts/${postId}`, { method: 'DELETE', headers });
-    if (!res.ok) {
-      const errorData = await res.json();
-      console.error('handleDeletePost: Ответ сервера:', errorData);
-      throw new Error(errorData.message || 'Ошибка удаления поста');
+    if (!user) return;
+    if (!confirm('Вы уверены, что хотите удалить этот пост?')) return;
+    setError(null);
+    try {
+      setSubmitting(true);
+      const authToken = localStorage.getItem('authToken') || '';
+      const headers: Record<string, string> = { Authorization: `Bearer ${authToken}`, 'x-user-id': user.userId };
+      console.log(`Sending DELETE request to /api/posts/${postId} with headers:`, headers);
+      const res = await fetch(`/api/posts/${postId}`, { method: 'DELETE', headers });
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.error('handleDeletePost: Ответ сервера:', errorData);
+        throw new Error(errorData.message || 'Ошибка удаления поста');
+      }
+      setPosts((prev: PostData[]) => prev.filter((post) => post._id !== postId));
+      console.log(`Post ${postId} deleted successfully`);
+    } catch (err: any) {
+      console.error('handleDeletePost: Ошибка:', err.message);
+      setError(err.message || 'Произошла ошибка при удалении поста');
+    } finally {
+      setSubmitting(false);
     }
-    setPosts((prev: PostData[]) => prev.filter((post) => post._id !== postId));
-    console.log(`Post ${postId} deleted successfully`);
-  } catch (err: any) {
-    console.error('handleDeletePost: Ошибка:', err.message);
-    setError(err.message || 'Произошла ошибка при удалении поста');
-  } finally {
-    setSubmitting(false);
-  }
-};
+  };
 
   const handleDeleteAccount = async () => {
     if (!user) return;
@@ -357,17 +358,25 @@ export default function ProfilePage() {
                     Выбрать интересы
                   </Button>
                 </Form.Group>
-                <Button variant="primary" type="submit" disabled={submitting}>
-                  {submitting ? 'Сохранение...' : 'Сохранить'}
-                </Button>
-                <Button
-                  variant="danger"
-                  onClick={handleDeleteAccount}
-                  disabled={submitting}
-                  className="ms-2"
-                >
-                  Удалить аккаунт
-                </Button>
+                <div className="d-flex gap-2">
+                  <Button variant="primary" type="submit" disabled={submitting}>
+                    {submitting ? 'Сохранение...' : 'Сохранить'}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    onClick={handleDeleteAccount}
+                    disabled={submitting}
+                  >
+                    Удалить аккаунт
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setShowAboutMeModal(true)}
+                    disabled={submitting}
+                  >
+                    Данные обо мне
+                  </Button>
+                </div>
               </Form>
             </div>
           </Col>
@@ -472,17 +481,25 @@ export default function ProfilePage() {
                       Выбрать интересы
                     </Button>
                   </Form.Group>
-                  <Button variant="primary" type="submit" disabled={submitting}>
-                    {submitting ? 'Сохранение...' : 'Сохранить'}
-                  </Button>
-                  <Button
-                    variant="danger"
-                    onClick={handleDeleteAccount}
-                    disabled={submitting}
-                    className="ms-2"
-                  >
-                    Удалить аккаунт
-                  </Button>
+                  <div className="d-flex gap-2 flex-column flex-md-row">
+                    <Button variant="primary" type="submit" disabled={submitting}>
+                      {submitting ? 'Сохранение...' : 'Сохранить'}
+                    </Button>
+                    <Button
+                      variant="danger"
+                      onClick={handleDeleteAccount}
+                      disabled={submitting}
+                    >
+                      Удалить аккаунт
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => setShowAboutMeModal(true)}
+                      disabled={submitting}
+                    >
+                      Данные обо мне
+                    </Button>
+                  </div>
                 </Form>
               </div>
             )}
@@ -519,6 +536,26 @@ export default function ProfilePage() {
           </Button>
           <Button variant="primary" onClick={() => setShowInterestsModal(false)}>
             Сохранить
+          </Button>
+        </Modal.Footer>
+      </Modal>
+      <Modal show={showAboutMeModal} onHide={() => setShowAboutMeModal(false)}>
+        <Modal.Header closeButton>
+          <Modal.Title>Данные обо мне</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p>Мы собираем следующие данные о вашей активности:</p>
+          <ListGroup>
+            <ListGroup.Item>Посты</ListGroup.Item>
+            <ListGroup.Item>Комментарии</ListGroup.Item>
+            <ListGroup.Item>Лайки</ListGroup.Item>
+            <ListGroup.Item>Реакции</ListGroup.Item>
+            <ListGroup.Item>Интересы</ListGroup.Item>
+          </ListGroup>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowAboutMeModal(false)}>
+            Закрыть
           </Button>
         </Modal.Footer>
       </Modal>
