@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/app/lib/AuthContext';
-import { Container, Alert, Image, ListGroup, Button } from 'react-bootstrap';
+import { Container, Alert, Image, ListGroup, Button, Modal, ModalHeader, ModalBody, ModalFooter, ModalTitle } from 'react-bootstrap';
 import Post from '@/app/Components/Post';
 
 interface UserData {
@@ -44,14 +44,23 @@ interface ProfileData {
   isFollowing: boolean;
 }
 
+interface ProfileView {
+  _id: string;
+  userId: string;
+  viewerId: { _id: string; username: string };
+  viewedAt: string;
+}
+
 export default function Profile() {
   const { user, isInitialized } = useAuth();
   const { id: profileId } = useParams() as { id: string };
   const router = useRouter();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [posts, setPosts] = useState<PostData[]>([]);
+  const [profileViews, setProfileViews] = useState<ProfileView[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showViewLogModal, setShowViewLogModal] = useState(false);
 
   const fetchProfileAndPosts = async () => {
     if (!user || !profileId) return;
@@ -64,6 +73,19 @@ export default function Profile() {
         'x-user-id': user.userId,
       };
 
+      // Логируем просмотр профиля, если это не текущий пользователь
+      if (user.userId !== profileId) {
+        await fetch('/api/profile/views', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${authToken}`,
+            'x-user-id': user.userId,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ profileId }),
+        });
+      }
+
       const profileRes = await fetch(`/api/users/${profileId}`, { headers, cache: 'no-store' });
       if (!profileRes.ok) throw new Error(`Не удалось загрузить профиль: ${await profileRes.text()}`);
 
@@ -75,6 +97,14 @@ export default function Profile() {
 
       const postsData = await postsRes.json();
       setPosts(Array.isArray(postsData) ? postsData : []);
+
+      // Загружаем журнал посещений, если это профиль текущего пользователя
+      if (profileId === user.userId) {
+        const viewsRes = await fetch('/api/profile/views', { headers, cache: 'no-store' });
+        if (!viewsRes.ok) throw new Error(`Не удалось загрузить журнал посещений: ${await viewsRes.text()}`);
+        const viewsData: ProfileView[] = await viewsRes.json();
+        setProfileViews(viewsData);
+      }
     } catch (err: any) {
       setError(err.message.includes('404') ? 'Пользователь не найден' : err.message);
     } finally {
@@ -211,6 +241,39 @@ export default function Profile() {
               <p className="text-muted">Нет постов</p>
             )}
           </ListGroup>
+          {profile._id === user.userId && (
+            <Button
+              variant="secondary"
+              onClick={() => setShowViewLogModal(true)}
+              className="mt-4 w-100"
+            >
+              Журнал посещений
+            </Button>
+          )}
+          <Modal show={showViewLogModal} onHide={() => setShowViewLogModal(false)} centered>
+            <ModalHeader closeButton>
+              <ModalTitle>Журнал посещений</ModalTitle>
+            </ModalHeader>
+            <ModalBody>
+              {profileViews.length > 0 ? (
+                <ListGroup variant="flush">
+                  {profileViews.map((view) => (
+                    <ListGroup.Item key={view._id}>
+                      Пользователь @{view.viewerId.username} просмотрел ваш профиль{' '}
+                      {new Date(view.viewedAt).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
+                    </ListGroup.Item>
+                  ))}
+                </ListGroup>
+              ) : (
+                <p className="text-muted">Нет данных о посещениях</p>
+              )}
+            </ModalBody>
+            <ModalFooter>
+              <Button variant="secondary" onClick={() => setShowViewLogModal(false)}>
+                Закрыть
+              </Button>
+            </ModalFooter>
+          </Modal>
         </>
       )}
     </Container>

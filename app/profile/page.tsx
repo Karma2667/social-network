@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/lib/AuthContext';
-import { Container, Row, Col, Form, Button, Alert, ListGroup, Modal, FormCheck } from 'react-bootstrap';
+import { Container, Row, Col, Form, Button, Alert, ListGroup, Modal, FormCheck, Card, Stack } from 'react-bootstrap';
 import Image from 'next/image';
 import Post from '@/app/Components/Post';
 
@@ -45,6 +45,13 @@ interface PostData {
   comments: CommentData[];
 }
 
+interface ProfileView {
+  _id: string;
+  userId: string;
+  viewerId: { _id: string; username: string };
+  viewedAt: string;
+}
+
 const PREDEFINED_INTERESTS = [
   'Программирование',
   'Музыка',
@@ -70,8 +77,10 @@ export default function ProfilePage() {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [interests, setInterests] = useState<string[]>([]);
   const [posts, setPosts] = useState<PostData[]>([]);
+  const [profileViews, setProfileViews] = useState<ProfileView[]>([]);
   const [showInterestsModal, setShowInterestsModal] = useState(false);
   const [showAboutMeModal, setShowAboutMeModal] = useState(false);
+  const [showViewLogModal, setShowViewLogModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -119,6 +128,12 @@ export default function ProfilePage() {
         }
         const postsData: PostData[] = await postsRes.json();
         setPosts(postsData.filter((post) => post.isCommunityPost !== true));
+
+        // Загружаем журнал посещений
+        const viewsRes = await fetch('/api/profile/views', { headers, cache: 'no-store' });
+        if (!viewsRes.ok) throw new Error(`Не удалось загрузить журнал посещений: ${await viewsRes.text()}`);
+        const viewsData: ProfileView[] = await viewsRes.json();
+        setProfileViews(viewsData);
       } catch (err: any) {
         setError(err.message || 'Произошла ошибка при загрузке данных');
       } finally {
@@ -128,6 +143,31 @@ export default function ProfilePage() {
 
     fetchProfileAndPosts();
   }, [isInitialized, user, router]);
+
+  useEffect(() => {
+    if (!showViewLogModal || !user) return;
+
+    const fetchProfileViews = async () => {
+      try {
+        const authToken = localStorage.getItem('authToken') || '';
+        const headers: Record<string, string> = {
+          Authorization: `Bearer ${authToken}`,
+          'x-user-id': user.userId,
+        };
+        const res = await fetch('/api/profile/views', { headers, cache: 'no-store' });
+        if (!res.ok) {
+          const errorData = await res.json();
+          throw new Error(`Не удалось загрузить журнал доступа: ${errorData.message || 'Неизвестная ошибка'}`);
+        }
+        const viewsData: ProfileView[] = await res.json();
+        setProfileViews(viewsData);
+      } catch (err: any) {
+        setError(err.message || 'Произошла ошибка при загрузке журнала доступа');
+      }
+    };
+
+    fetchProfileViews();
+  }, [showViewLogModal, user]);
 
   useEffect(() => {
     if (avatar) {
@@ -282,29 +322,34 @@ export default function ProfilePage() {
     return avatarPath || '/default-avatar.png';
   };
 
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
+  };
+
   if (!isInitialized || loading) return <div className="p-4 text-center text-muted">Загрузка...</div>;
   if (!user) return null;
 
   return (
-    <Container fluid className="telegram-profile-page">
-      {error && <Alert variant="danger">{error}</Alert>}
-      <Row>
+    <Container fluid className="telegram-profile-page py-4">
+      {error && <Alert variant="danger" className="mb-4">{error}</Alert>}
+      <Row className="g-4">
         {isDesktop && (
           <Col md={3}>
-            <div className="p-3">
-              <h5>Профиль</h5>
+            <Card className="p-3 shadow-sm border-0 h-100">
+              <h5 className="mb-4 text-center">Профиль</h5>
               <div className="text-center mb-4">
                 <Image
                   src={getAvatarUrl(profile?.avatar)}
                   alt={profile?.username || 'User Profile'}
                   width={150}
                   height={150}
-                  className="rounded-circle"
+                  className="rounded-circle border"
                 />
                 <Button
                   variant="outline-primary"
                   onClick={() => avatarInputRef.current?.click()}
-                  className="mt-2 w-100"
+                  className="mt-3 w-100"
                 >
                   Изменить фото
                 </Button>
@@ -344,51 +389,46 @@ export default function ProfilePage() {
                     placeholder="Расскажите о себе"
                   />
                 </Form.Group>
-                <Form.Group className="mb-3">
+                <Form.Group className="mb-4">
                   <div className="mb-2">
                     {interests.length > 0 ? (
                       interests.map((interest: string) => (
-                        <span key={interest} className="badge bg-primary me-1">{interest}</span>
+                        <span key={interest} className="badge bg-primary me-1 mb-1">{interest}</span>
                       ))
                     ) : (
                       <p className="text-muted">Нет интересов</p>
                     )}
                   </div>
-                  <Button variant="outline-secondary" onClick={() => setShowInterestsModal(true)}>
+                  <Button variant="outline-secondary" onClick={() => setShowInterestsModal(true)} className="w-100">
                     Выбрать интересы
                   </Button>
                 </Form.Group>
-                <div className="d-flex gap-2">
-                  <Button variant="primary" type="submit" disabled={submitting}>
+                <Stack gap={2} className="mb-3">
+                  <Button variant="primary" type="submit" disabled={submitting} className="w-100">
                     {submitting ? 'Сохранение...' : 'Сохранить'}
                   </Button>
-                  <Button
-                    variant="danger"
-                    onClick={handleDeleteAccount}
-                    disabled={submitting}
-                  >
+                  <Button variant="danger" onClick={handleDeleteAccount} disabled={submitting} className="w-100">
                     Удалить аккаунт
                   </Button>
-                  <Button
-                    variant="secondary"
-                    onClick={() => setShowAboutMeModal(true)}
-                    disabled={submitting}
-                  >
+                  <Button variant="secondary" onClick={() => setShowAboutMeModal(true)} disabled={submitting} className="w-100">
                     Данные обо мне
                   </Button>
-                </div>
+                  <Button variant="secondary" onClick={() => setShowViewLogModal(true)} disabled={submitting} className="w-100">
+                    Журнал посещений
+                  </Button>
+                </Stack>
               </Form>
-            </div>
+            </Card>
           </Col>
         )}
         <Col md={isDesktop ? 9 : 12}>
-          <div className="post-list p-3 telegram-posts">
-            <h5>Посты</h5>
-            {error && <Alert variant="danger">{error}</Alert>}
+          <Card className="p-3 shadow-sm border-0 h-100">
+            <h5 className="mb-4">Посты</h5>
+            {error && <Alert variant="danger" className="mb-4">{error}</Alert>}
             <ListGroup>
               {Array.isArray(posts) && posts.length > 0 ? (
                 posts.map((post) => (
-                  <ListGroup.Item key={post._id} className="border-0 mb-2">
+                  <ListGroup.Item key={post._id} className="border-0 mb-3 p-0">
                     <Post
                       postId={post._id}
                       username={post.userId?.username || profile?.username || 'Unknown'}
@@ -410,24 +450,24 @@ export default function ProfilePage() {
                   </ListGroup.Item>
                 ))
               ) : (
-                <p className="text-muted text-center">Нет постов</p>
+                <p className="text-muted text-center py-4">Нет постов</p>
               )}
             </ListGroup>
             {!isDesktop && (
-              <div className="mt-4">
-                <h5>Профиль</h5>
+              <Card className="mt-4 p-3 shadow-sm border-0">
+                <h5 className="mb-4 text-center">Профиль</h5>
                 <div className="text-center mb-4">
                   <Image
                     src={getAvatarUrl(profile?.avatar)}
                     alt={profile?.username || 'User Profile'}
                     width={150}
                     height={150}
-                    className="rounded-circle"
+                    className="rounded-circle border"
                   />
                   <Button
                     variant="outline-primary"
                     onClick={() => avatarInputRef.current?.click()}
-                    className="mt-2 w-100"
+                    className="mt-3 w-100"
                   >
                     Изменить фото
                   </Button>
@@ -467,46 +507,41 @@ export default function ProfilePage() {
                       placeholder="Расскажите о себе"
                     />
                   </Form.Group>
-                  <Form.Group className="mb-3">
+                  <Form.Group className="mb-4">
                     <div className="mb-2">
                       {interests.length > 0 ? (
                         interests.map((interest: string) => (
-                          <span key={interest} className="badge bg-primary me-1">{interest}</span>
+                          <span key={interest} className="badge bg-primary me-1 mb-1">{interest}</span>
                         ))
                       ) : (
                         <p className="text-muted">Нет интересов</p>
                       )}
                     </div>
-                    <Button variant="outline-secondary" onClick={() => setShowInterestsModal(true)}>
+                    <Button variant="outline-secondary" onClick={() => setShowInterestsModal(true)} className="w-100">
                       Выбрать интересы
                     </Button>
                   </Form.Group>
-                  <div className="d-flex gap-2 flex-column flex-md-row">
-                    <Button variant="primary" type="submit" disabled={submitting}>
+                  <Stack gap={2} className="mb-3">
+                    <Button variant="primary" type="submit" disabled={submitting} className="w-100">
                       {submitting ? 'Сохранение...' : 'Сохранить'}
                     </Button>
-                    <Button
-                      variant="danger"
-                      onClick={handleDeleteAccount}
-                      disabled={submitting}
-                    >
+                    <Button variant="danger" onClick={handleDeleteAccount} disabled={submitting} className="w-100">
                       Удалить аккаунт
                     </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => setShowAboutMeModal(true)}
-                      disabled={submitting}
-                    >
+                    <Button variant="secondary" onClick={() => setShowAboutMeModal(true)} disabled={submitting} className="w-100">
                       Данные обо мне
                     </Button>
-                  </div>
+                    <Button variant="secondary" onClick={() => setShowViewLogModal(true)} disabled={submitting} className="w-100">
+                      Журнал посещений
+                    </Button>
+                  </Stack>
                 </Form>
-              </div>
+              </Card>
             )}
-          </div>
+          </Card>
         </Col>
       </Row>
-      <Modal show={showInterestsModal} onHide={() => setShowInterestsModal(false)}>
+      <Modal show={showInterestsModal} onHide={() => setShowInterestsModal(false)} centered>
         <Modal.Header closeButton>
           <Modal.Title>Выберите интересы</Modal.Title>
         </Modal.Header>
@@ -539,7 +574,7 @@ export default function ProfilePage() {
           </Button>
         </Modal.Footer>
       </Modal>
-      <Modal show={showAboutMeModal} onHide={() => setShowAboutMeModal(false)}>
+      <Modal show={showAboutMeModal} onHide={() => setShowAboutMeModal(false)} centered>
         <Modal.Header closeButton>
           <Modal.Title>Данные обо мне</Modal.Title>
         </Modal.Header>
@@ -555,6 +590,30 @@ export default function ProfilePage() {
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowAboutMeModal(false)}>
+            Закрыть
+          </Button>
+        </Modal.Footer>
+      </Modal>
+      <Modal show={showViewLogModal} onHide={() => setShowViewLogModal(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Журнал посещений</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {profileViews.length > 0 ? (
+            <ListGroup variant="flush">
+              {profileViews.map((view) => (
+                <ListGroup.Item key={view._id}>
+                  Пользователь @{view.viewerId.username} просмотрел ваш профиль{' '}
+                  {formatDate(view.viewedAt)}
+                </ListGroup.Item>
+              ))}
+            </ListGroup>
+          ) : (
+            <p className="text-muted">Нет данных о посещениях</p>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowViewLogModal(false)}>
             Закрыть
           </Button>
         </Modal.Footer>
