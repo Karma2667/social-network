@@ -2,12 +2,14 @@ import { NextResponse } from 'next/server';
 import { connectToDB } from '@/app/lib/mongoDB';
 import Post, { PostDocument, LeanPostDocument } from '@/models/Post';
 import Comment from '@/models/Comment';
-import User, { UserDocument } from '@/models/User';
+import User from '@/models/User';
 import mongoose, { Types, ObjectId, HydratedDocument } from 'mongoose';
 
 // Обновленный UserDocument с явным указанием _id
-interface UserDocumentWithId extends UserDocument {
+interface UserDocumentWithId extends Document {
   _id: Types.ObjectId;
+  username: string;
+  avatar?: string;
 }
 
 // Интерфейсы для данных ответа
@@ -54,30 +56,27 @@ interface PostData {
   comments: CommentData[];
 }
 
-// GET метод для получения постов
 export async function GET(request: Request) {
-  console.time('GET /api/posts: Total');
-  console.log('GET /api/posts: Запрос получен, URL:', request.url);
+  const url = new URL(request.url);
+  const endpoint = url.pathname;
+
+  console.time(`GET ${endpoint}: Total`);
+  console.log(`GET ${endpoint}: Запрос получен, URL:`, request.url);
 
   try {
     await connectToDB();
-    console.log('GET /api/posts: Успешное подключение к MongoDB');
+    console.log(`GET ${endpoint}: Успешное подключение к MongoDB`);
 
     const userId = request.headers.get('x-user-id');
-    console.log('GET /api/posts: Получен userId из заголовка:', userId);
+    console.log(`GET ${endpoint}: Получен userId из заголовка:`, userId);
 
-    const url = new URL(request.url);
-    const requestedUserId = url.searchParams.get('userId');
-    const communityId = url.searchParams.get('communityId');
-
-    console.log('GET /api/posts: Получен requestedUserId из параметров:', requestedUserId);
-
-    if (requestedUserId && !mongoose.Types.ObjectId.isValid(requestedUserId)) {
-      console.log('GET /api/posts: Неверный формат requestedUserId:', requestedUserId);
-      return NextResponse.json({ error: 'Неверный формат идентификатора пользователя' }, { status: 400 });
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      console.log(`GET ${endpoint}: Отсутствует или неверный userId`);
+      return NextResponse.json({ error: 'Требуется валидный userId' }, { status: 400 });
     }
 
-    let postsQuery = Post.find().sort({ createdAt: -1 })
+    let postsQuery = Post.find()
+      .sort({ createdAt: -1 })
       .populate({
         path: 'userId',
         model: User,
@@ -93,41 +92,18 @@ export async function GET(request: Request) {
         },
       });
 
-    // Применяем фильтры только если параметры валидны
-    if (communityId && mongoose.Types.ObjectId.isValid(communityId)) {
-      postsQuery = postsQuery.find({
-        community: new Types.ObjectId(communityId),
-        isCommunityPost: true,
-      });
-    } else if (requestedUserId && mongoose.Types.ObjectId.isValid(requestedUserId)) {
-      postsQuery = postsQuery.find({
-        userId: new Types.ObjectId(requestedUserId),
-        isCommunityPost: false,
-      });
-    } else if (userId && mongoose.Types.ObjectId.isValid(userId)) {
-      postsQuery = postsQuery.find({
-        userId: new Types.ObjectId(userId),
-        isCommunityPost: false,
-      });
-    }
-
-    console.log('GET /api/posts: Инициализирован запрос к коллекции Post с фильтром по', {
-      communityId,
-      requestedUserId,
-      userId,
-    });
-    console.log('GET /api/posts: Установлена популяция для userId и комментариев');
+    console.log(`GET ${endpoint}: Инициализирован запрос к коллекции Post для всех постов`);
 
     const posts = await postsQuery as PopulatedPost[];
-    console.log('GET /api/posts: Получено записей из базы:', posts.length);
+    console.log(`GET ${endpoint}: Получено записей из базы:`, posts.length);
 
     if (!posts || posts.length === 0) {
-      console.log('GET /api/posts: Посты не найдены');
+      console.log(`GET ${endpoint}: Посты не найдены`);
       return NextResponse.json([], { status: 200 });
     }
 
     const formattedPosts: PostData[] = posts.map((post: PopulatedPost) => {
-      console.log('GET /api/posts: Форматирование поста с _id:', post._id.toString());
+      console.log(`GET ${endpoint}: Форматирование поста с _id:`, post._id.toString());
       const userData: UserData = post.userId
         ? {
             _id: post.userId._id.toString(),
@@ -175,18 +151,17 @@ export async function GET(request: Request) {
       };
     });
 
-    console.log('GET /api/posts: Форматированные посты:', formattedPosts);
-    console.timeEnd('GET /api/posts: Total');
+    console.log(`GET ${endpoint}: Форматированные посты:`, formattedPosts);
+    console.timeEnd(`GET ${endpoint}: Total`);
     return NextResponse.json(formattedPosts, { status: 200 });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-    console.error('GET /api/posts: Ошибка на этапе выполнения:', errorMessage, 'Полная ошибка:', error);
-    console.timeEnd('GET /api/posts: Total');
+    console.error(`GET ${endpoint}: Ошибка на этапе выполнения:`, errorMessage, 'Полная ошибка:', error);
+    console.timeEnd(`GET ${endpoint}: Total`);
     return NextResponse.json({ error: 'Ошибка загрузки постов', details: errorMessage }, { status: 500 });
   }
 }
 
-// POST метод для создания нового поста
 export async function POST(request: Request) {
   console.time('POST /api/posts: Total');
   console.log('POST /api/posts: Запрос получен, URL:', request.url);
@@ -302,7 +277,6 @@ export async function POST(request: Request) {
   }
 }
 
-// PUT метод для обновления поста
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   console.time('PUT /api/posts/[id]: Total');
   console.log('PUT /api/posts/[id]: Запрос получен, id:', params.id, 'URL:', request.url);
@@ -410,7 +384,6 @@ export async function PUT(request: Request, { params }: { params: { id: string }
   }
 }
 
-// DELETE метод для удаления поста
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
   console.time('DELETE /api/posts/[id]: Total');
   console.log('DELETE /api/posts/[id]: Запрос получен, id:', params.id, 'URL:', request.url);

@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/app/lib/AuthContext';
-import { Container, Form, Button, Alert } from 'react-bootstrap';
-import { Paperclip } from 'react-bootstrap-icons';
+import { Container, Form, Button, Alert, Modal } from 'react-bootstrap';
+import { Paperclip, Trash } from 'react-bootstrap-icons';
 import EmojiPicker from '@/app/Components/EmojiPicker';
 import Post from '@/app/Components/Post';
 
@@ -27,6 +27,8 @@ interface PostData {
   _id: string;
   content: string;
   userId: UserData;
+  communityId?: string;
+  isCommunityPost?: boolean;
   createdAt: string;
   likes: string[];
   reactions: { emoji: string; users: string[] }[];
@@ -35,34 +37,37 @@ interface PostData {
 }
 
 export default function Home() {
-  const { user, isInitialized } = useAuth();
+  const { user, isInitialized, logout } = useAuth();
   const [posts, setPosts] = useState<PostData[]>([]);
   const [postContent, setPostContent] = useState('');
   const [postImages, setPostImages] = useState<File[]>([]);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchPosts = async () => {
     if (!user?.userId || !isInitialized) return;
     try {
       const authToken = localStorage.getItem('authToken') || '';
+      const headers = {
+        'x-user-id': user.userId,
+        'Authorization': `Bearer ${authToken}`,
+      };
+
       const res = await fetch('/api/posts', {
-        headers: {
-          'x-user-id': user.userId,
-          'Authorization': `Bearer ${authToken}`,
-        },
+        headers,
         cache: 'no-store',
       });
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
-        throw new Error(errorData.error || `Ошибка загрузки постов (статус: ${res.status})`);
+        throw new Error(errorData.error || `Ошибка загрузки ленты новостей (статус: ${res.status})`);
       }
       const data = await res.json();
       setPosts(Array.isArray(data) ? data : []);
     } catch (err: any) {
-      setError(err.message || 'Ошибка загрузки постов');
+      setError(err.message || 'Ошибка загрузки ленты новостей');
     }
   };
 
@@ -89,7 +94,7 @@ export default function Home() {
       const method = editingPostId ? 'PUT' : 'POST';
       const formData = new FormData();
       formData.append('content', postContent);
-      postImages.forEach((file) => formData.append('files', file));
+      postImages.forEach((file) => formData.append('images', file));
 
       const res = await fetch(url, {
         method,
@@ -135,7 +140,7 @@ export default function Home() {
       const authToken = localStorage.getItem('authToken') || '';
       const formData = new FormData();
       formData.append('content', content);
-      images.forEach((file) => formData.append('files', file));
+      images.forEach((file) => formData.append('images', file));
 
       const res = await fetch(`/api/posts/${postId}`, {
         method: 'PUT',
@@ -156,13 +161,41 @@ export default function Home() {
     }
   };
 
+  const handleDeleteUser = async () => {
+    if (!user?.userId) return;
+    try {
+      setSubmitting(true);
+      setError(null);
+      const authToken = localStorage.getItem('authToken') || '';
+      const res = await fetch('/api/users', {
+        method: 'DELETE',
+        headers: {
+          'x-user-id': user.userId,
+          'Authorization': `Bearer ${authToken}`,
+        },
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: `Неизвестная ошибка (статус: ${res.status})` }));
+        throw new Error(errorData.error || 'Не удалось удалить пользователя');
+      }
+
+      await logout();
+      setShowDeleteModal(false);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (!isInitialized) return <div>Загрузка...</div>;
   if (!user) return null;
 
   return (
     <Container fluid>
       <div className="p-3 telegram-posts">
-        <h5>Посты</h5>
+        <h5>Все посты</h5> {/* Изменил заголовок для отражения всех постов */}
         <Form onSubmit={handlePostSubmit} className="mb-3">
           <Form.Group className="mb-3 position-relative">
             <Form.Control
@@ -183,6 +216,15 @@ export default function Home() {
                 title="Прикрепить изображения"
               >
                 <Paperclip size={24} />
+              </Button>
+              <Button
+                variant="link"
+                onClick={() => setShowDeleteModal(true)}
+                disabled={submitting}
+                className="ms-2 text-danger"
+                title="Удалить аккаунт"
+              >
+                <Trash size={24} />
               </Button>
             </div>
             <input
@@ -255,6 +297,23 @@ export default function Home() {
           <p className="text-muted">Нет постов для отображения.</p>
         )}
       </div>
+
+      <Modal show={showDeleteModal} onHide={() => setShowDeleteModal(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Удаление аккаунта</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p>Вы уверены, что хотите удалить свой аккаунт? Это действие нельзя отменить, и все ваши данные будут потеряны.</p>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowDeleteModal(false)} disabled={submitting}>
+            Отмена
+          </Button>
+          <Button variant="danger" onClick={handleDeleteUser} disabled={submitting}>
+            {submitting ? 'Удаление...' : 'Удалить аккаунт'}
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </Container>
   );
 }
