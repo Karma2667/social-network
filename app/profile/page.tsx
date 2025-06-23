@@ -36,6 +36,8 @@ interface PostData {
   _id: string;
   content: string;
   userId: UserData;
+  communityId?: string;
+  isCommunityPost?: boolean;
   createdAt: string;
   likes: string[];
   reactions: { emoji: string; users: string[] }[];
@@ -44,8 +46,16 @@ interface PostData {
 }
 
 const PREDEFINED_INTERESTS = [
-  'Программирование', 'Музыка', 'Игры', 'Путешествия', 'Спорт',
-  'Книги', 'Фильмы', 'Кулинария', 'Искусство', 'Наука',
+  'Программирование',
+  'Музыка',
+  'Игры',
+  'Путешествия',
+  'Спорт',
+  'Книги',
+  'Фильмы',
+  'Кулинария',
+  'Искусство',
+  'Наука',
 ];
 
 export default function ProfilePage() {
@@ -76,7 +86,7 @@ export default function ProfilePage() {
   useEffect(() => {
     if (!isInitialized) return;
     if (!user) {
-      router.replace('/login');
+      router.push('/login');
       return;
     }
 
@@ -85,14 +95,14 @@ export default function ProfilePage() {
       try {
         const authToken = localStorage.getItem('authToken') || '';
         const headers: Record<string, string> = {
-          'Authorization': `Bearer ${authToken}`,
+          Authorization: `Bearer ${authToken}`,
           'x-user-id': user.userId,
         };
 
         const profileRes = await fetch('/api/profile', { headers, cache: 'no-store' });
         if (!profileRes.ok) {
           const errorData = await profileRes.json();
-          throw new Error(`Не удалось загрузить профиль: ${profileRes.status} ${errorData.error || ''}`);
+          throw new Error(`Не удалось загрузить профиль: ${errorData.message || 'Неизвестная ошибка'}`);
         }
         const data: ProfileData = await profileRes.json();
         setProfile(data);
@@ -101,19 +111,20 @@ export default function ProfilePage() {
         setBio(data.bio || '');
         setInterests(data.interests || []);
 
-        const postsRes = await fetch(`/api/posts?userId=${user.userId}`, { headers, cache: 'no-store' });
+        const postsRes = await fetch(`/api/posts?userId=${user.userId}&isCommunityPost=false`, { headers, cache: 'no-store' });
         if (!postsRes.ok) {
           const errorData = await postsRes.json();
-          throw new Error(`Не удалось загрузить посты: ${postsRes.status} ${errorData.error || ''}`);
+          throw new Error(`Не удалось загрузить посты: ${errorData.message || 'Неизвестная ошибка'}`);
         }
-        const postsData = await postsRes.json();
-        setPosts(Array.isArray(postsData) ? postsData : []);
+        const postsData: PostData[] = await postsRes.json();
+        setPosts(postsData.filter((post) => !post.isCommunityPost));
       } catch (err: any) {
-        setError(err.message);
+        setError(err.message || 'Произошла ошибка при загрузке данных');
       } finally {
         setLoading(false);
       }
     };
+
     fetchProfileAndPosts();
   }, [isInitialized, user, router]);
 
@@ -131,8 +142,7 @@ export default function ProfilePage() {
     if (!username.trim()) return false;
     try {
       const authToken = localStorage.getItem('authToken') || '';
-      const headers: Record<string, string> = { 'Authorization': `Bearer ${authToken}` };
-      if (user?.userId) headers['x-user-id'] = user.userId;
+      const headers: Record<string, string> = { Authorization: `Bearer ${authToken}`, 'x-user-id': user?.userId || '' };
       const res = await fetch(`/api/profile?username=${encodeURIComponent(username)}`, { headers });
       const data = await res.json();
       return res.ok && !data.exists;
@@ -166,9 +176,9 @@ export default function ProfilePage() {
     }
 
     try {
+      setSubmitting(true);
       const authToken = localStorage.getItem('authToken') || '';
-      const headers: Record<string, string> = { 'Authorization': `Bearer ${authToken}` };
-      if (user.userId) headers['x-user-id'] = user.userId;
+      const headers: Record<string, string> = { Authorization: `Bearer ${authToken}`, 'x-user-id': user.userId };
       const formData = new FormData();
       formData.append('name', name);
       formData.append('username', username);
@@ -179,7 +189,7 @@ export default function ProfilePage() {
       const res = await fetch('/api/profile', { method: 'PUT', headers, body: formData });
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.error || 'Ошибка обновления профиля');
+        throw new Error(errorData.message || 'Ошибка обновления профиля');
       }
 
       const updatedProfile: ProfileData = await res.json();
@@ -188,30 +198,79 @@ export default function ProfilePage() {
       setAvatarPreview(null);
       router.refresh();
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Произошла ошибка при обновлении профиля');
+    } finally {
+      setSubmitting(false);
     }
   };
 
+  const handleEditPost = async (postId: string, content: string, images: File[]) => {
+    if (!user) return;
+    setError(null);
+    try {
+      setSubmitting(true);
+      const authToken = localStorage.getItem('authToken') || '';
+      const headers: Record<string, string> = { Authorization: `Bearer ${authToken}`, 'x-user-id': user.userId };
+      const formData = new FormData();
+      formData.append('content', content);
+      images.forEach((file) => formData.append('images', file));
+      const res = await fetch(`/api/posts/${postId}`, { method: 'PUT', headers, body: formData });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Ошибка редактирования поста');
+      }
+      const updatedPost: PostData = await res.json();
+      setPosts((prev: PostData[]) => prev.map((post) => (post._id === postId ? updatedPost : post)));
+    } catch (err: any) {
+      setError(err.message || 'Произошла ошибка при редактировании поста');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeletePost = async (postId: string) => {
+  if (!user) return;
+  if (!confirm('Вы уверены, что хотите удалить этот пост?')) return;
+  setError(null);
+  try {
+    setSubmitting(true);
+    const authToken = localStorage.getItem('authToken') || '';
+    const headers: Record<string, string> = { Authorization: `Bearer ${authToken}`, 'x-user-id': user.userId };
+    console.log(`Sending DELETE request to /api/posts/${postId} with headers:`, headers);
+    const res = await fetch(`/api/posts/${postId}`, { method: 'DELETE', headers });
+    if (!res.ok) {
+      const errorData = await res.json();
+      console.error('handleDeletePost: Ответ сервера:', errorData);
+      throw new Error(errorData.message || 'Ошибка удаления поста');
+    }
+    setPosts((prev: PostData[]) => prev.filter((post) => post._id !== postId));
+    console.log(`Post ${postId} deleted successfully`);
+  } catch (err: any) {
+    console.error('handleDeletePost: Ошибка:', err.message);
+    setError(err.message || 'Произошла ошибка при удалении поста');
+  } finally {
+    setSubmitting(false);
+  }
+};
+
   const handleDeleteAccount = async () => {
     if (!user) return;
-    if (!confirm("Вы уверены, что хотите удалить аккаунт? Все данные, включая сообщения, посты и чаты, будут безвозвратно удалены.")) {
-      return;
-    }
+    if (!confirm('Вы уверены, что хотите удалить аккаунт? Все данные будут безвозвратно удалены.')) return;
 
     setSubmitting(true);
     setError(null);
     try {
       const authToken = localStorage.getItem('authToken') || '';
-      const headers: Record<string, string> = { 'Authorization': `Bearer ${authToken}`, 'x-user-id': user.userId };
+      const headers: Record<string, string> = { Authorization: `Bearer ${authToken}`, 'x-user-id': user.userId };
       const res = await fetch('/api/users', { method: 'DELETE', headers });
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.error || 'Ошибка удаления аккаунта');
+        throw new Error(errorData.message || 'Ошибка удаления аккаунта');
       }
       localStorage.removeItem('authToken');
-      router.replace('/login');
+      router.push('/login');
     } catch (err: any) {
-      setError('Не удалось удалить аккаунт: ' + err.message);
+      setError(err.message || 'Не удалось удалить аккаунт');
     } finally {
       setSubmitting(false);
     }
@@ -246,7 +305,7 @@ export default function ProfilePage() {
                   onClick={() => avatarInputRef.current?.click()}
                   className="mt-2 w-100"
                 >
-                  Изменить аватар
+                  Изменить фото
                 </Button>
                 <input
                   type="file"
@@ -287,23 +346,18 @@ export default function ProfilePage() {
                 <Form.Group className="mb-3">
                   <div className="mb-2">
                     {interests.length > 0 ? (
-                      interests.map((interest) => (
+                      interests.map((interest: string) => (
                         <span key={interest} className="badge bg-primary me-1">{interest}</span>
                       ))
-                    ) : <p className="text-muted">Нет интересов</p>}
+                    ) : (
+                      <p className="text-muted">Нет интересов</p>
+                    )}
                   </div>
-                  <Button
-                    variant="outline-primary"
-                    onClick={() => setShowInterestsModal(true)}
-                  >
+                  <Button variant="outline-secondary" onClick={() => setShowInterestsModal(true)}>
                     Выбрать интересы
                   </Button>
                 </Form.Group>
-                <Button
-                  variant="primary"
-                  type="submit"
-                  disabled={submitting}
-                >
+                <Button variant="primary" type="submit" disabled={submitting}>
                   {submitting ? 'Сохранение...' : 'Сохранить'}
                 </Button>
                 <Button
@@ -312,14 +366,14 @@ export default function ProfilePage() {
                   disabled={submitting}
                   className="ms-2"
                 >
-                  Удалить все
+                  Удалить аккаунт
                 </Button>
               </Form>
             </div>
           </Col>
         )}
         <Col md={isDesktop ? 9 : 12}>
-          <div className="p-3 telegram-posts">
+          <div className="post-list p-3 telegram-posts">
             <h5>Посты</h5>
             {error && <Alert variant="danger">{error}</Alert>}
             <ListGroup>
@@ -328,17 +382,21 @@ export default function ProfilePage() {
                   <ListGroup.Item key={post._id} className="border-0 mb-2">
                     <Post
                       postId={post._id}
-                      username={post.userId?.username || 'Unknown'}
-                      content={post.content}
+                      username={post.userId?.username || profile?.username || 'Unknown'}
+                      content={post.content || ''}
                       createdAt={post.createdAt}
-                      userId={post.userId?._id || ''}
+                      userId={post.userId?._id || user.userId}
                       likes={post.likes || []}
                       reactions={post.reactions || []}
                       images={post.images || []}
                       comments={post.comments || []}
-                      userAvatar={post.userId?.avatar || '/default-avatar.png'}
+                      userAvatar={post.userId?.avatar || profile?.avatar || '/default-avatar.png'}
                       currentUserId={user.userId}
                       isAdmin={false}
+                      isCommunityPost={post.isCommunityPost || false}
+                      communityId={post.communityId || ''}
+                      onEdit={(postId, content, images) => handleEditPost(postId, content, images)}
+                      onDelete={() => handleDeletePost(post._id)}
                     />
                   </ListGroup.Item>
                 ))
@@ -362,7 +420,7 @@ export default function ProfilePage() {
                     onClick={() => avatarInputRef.current?.click()}
                     className="mt-2 w-100"
                   >
-                    Изменить аватар
+                    Изменить фото
                   </Button>
                   <input
                     type="file"
@@ -403,23 +461,18 @@ export default function ProfilePage() {
                   <Form.Group className="mb-3">
                     <div className="mb-2">
                       {interests.length > 0 ? (
-                        interests.map((interest) => (
+                        interests.map((interest: string) => (
                           <span key={interest} className="badge bg-primary me-1">{interest}</span>
                         ))
-                      ) : <p className="text-muted">Нет интересов</p>}
+                      ) : (
+                        <p className="text-muted">Нет интересов</p>
+                      )}
                     </div>
-                    <Button
-                      variant="outline-primary"
-                      onClick={() => setShowInterestsModal(true)}
-                    >
+                    <Button variant="outline-secondary" onClick={() => setShowInterestsModal(true)}>
                       Выбрать интересы
                     </Button>
                   </Form.Group>
-                  <Button
-                    variant="primary"
-                    type="submit"
-                    disabled={submitting}
-                  >
+                  <Button variant="primary" type="submit" disabled={submitting}>
                     {submitting ? 'Сохранение...' : 'Сохранить'}
                   </Button>
                   <Button
@@ -428,7 +481,7 @@ export default function ProfilePage() {
                     disabled={submitting}
                     className="ms-2"
                   >
-                    Удалить все
+                    Удалить аккаунт
                   </Button>
                 </Form>
               </div>
@@ -448,7 +501,7 @@ export default function ProfilePage() {
               label={interest}
               checked={interests.includes(interest)}
               onChange={() => {
-                setInterests((prev) =>
+                setInterests((prev: string[]) =>
                   prev.includes(interest)
                     ? prev.filter((i) => i !== interest)
                     : prev.length < 5
@@ -461,16 +514,10 @@ export default function ProfilePage() {
           ))}
         </Modal.Body>
         <Modal.Footer>
-          <Button
-            variant="secondary"
-            onClick={() => setShowInterestsModal(false)}
-          >
+          <Button variant="secondary" onClick={() => setShowInterestsModal(false)}>
             Закрыть
           </Button>
-          <Button
-            variant="primary"
-            onClick={() => setShowInterestsModal(false)}
-          >
+          <Button variant="primary" onClick={() => setShowInterestsModal(false)}>
             Сохранить
           </Button>
         </Modal.Footer>

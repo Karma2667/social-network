@@ -35,7 +35,7 @@ interface PostProps {
   isCommunityPost?: boolean;
   communityId?: string;
   onEdit?: (postId: string, content: string, images: File[]) => Promise<void>;
-  onDelete?: (postId: string) => Promise<void>; // Добавлен проп для удаления
+  onDelete?: (postId: string) => Promise<void>;
   fetchPosts?: () => Promise<void>;
 }
 
@@ -91,11 +91,11 @@ export default function Post({
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': user.userId,
-          'Authorization': `Bearer ${authToken}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({ userId: user.userId }),
       });
-      if (!res.ok) throw new Error(await res.text() || 'Не удалось поставить/убрать лайк');
+      if (!res.ok) throw new Error((await res.text()) || 'Не удалось поставить/убрать лайк');
       await fetchPosts();
     } catch (err: any) {
       console.error('Post: Ошибка лайка:', err.message);
@@ -111,11 +111,11 @@ export default function Post({
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': user.userId,
-          'Authorization': `Bearer ${authToken}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({ userId: user.userId, emoji }),
       });
-      if (!res.ok) throw new Error(await res.text() || 'Не удалось добавить реакцию');
+      if (!res.ok) throw new Error((await res.text()) || 'Не удалось добавить реакцию');
       await fetchPosts();
       setShowReactions(null);
     } catch (err: any) {
@@ -170,12 +170,12 @@ export default function Post({
         method: 'POST',
         headers: {
           'x-user-id': user.userId,
-          'Authorization': `Bearer ${authToken}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: formData,
       });
 
-      if (!res.ok) throw new Error(await res.text() || 'Не удалось добавить комментарий');
+      if (!res.ok) throw new Error((await res.text()) || 'Не удалось добавить комментарий');
       const responseData = await res.json();
       const userAvatar = avatar || '/default-avatar.png';
       const newCommentObj: CommentProps = {
@@ -207,11 +207,11 @@ export default function Post({
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': user.userId,
-          'Authorization': `Bearer ${authToken}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({ userId: user.userId }),
       });
-      if (!res.ok) throw new Error(await res.text() || 'Не удалось поставить/убрать лайк к комментарию');
+      if (!res.ok) throw new Error((await res.text()) || 'Не удалось поставить/убрать лайк к комментарию');
       const updatedComment = await res.json();
       setCommentsState((prev) =>
         prev.map((c) =>
@@ -219,9 +219,7 @@ export default function Post({
             ? {
                 ...c,
                 ...updatedComment,
-                userId: updatedComment.userId
-                  ? { ...c.userId, ...updatedComment.userId }
-                  : c.userId,
+                userId: updatedComment.userId ? { ...c.userId, ...updatedComment.userId } : c.userId,
               }
             : c
         )
@@ -241,11 +239,11 @@ export default function Post({
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': user.userId,
-          'Authorization': `Bearer ${authToken}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({ userId: user.userId, emoji }),
       });
-      if (!res.ok) throw new Error(await res.text() || 'Не удалось добавить реакцию к комментарию');
+      if (!res.ok) throw new Error((await res.text()) || 'Не удалось добавить реакцию к комментарию');
       const updatedComment = await res.json();
       setCommentsState((prev) =>
         prev.map((c) =>
@@ -253,9 +251,7 @@ export default function Post({
             ? {
                 ...c,
                 ...updatedComment,
-                userId: updatedComment.userId
-                  ? { ...c.userId, ...updatedComment.userId }
-                  : c.userId,
+                userId: updatedComment.userId ? { ...c.userId, ...updatedComment.userId } : c.userId,
               }
             : c
         )
@@ -276,11 +272,11 @@ export default function Post({
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': user.userId,
-          'Authorization': `Bearer ${authToken}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({ content: newContent, images: newImages }),
       });
-      if (!res.ok) throw new Error(await res.text() || 'Не удалось обновить комментарий');
+      if (!res.ok) throw new Error((await res.text()) || 'Не удалось обновить комментарий');
       const updatedComment = await res.json();
       setCommentsState((prev) =>
         prev.map((c) =>
@@ -288,9 +284,7 @@ export default function Post({
             ? {
                 ...c,
                 ...updatedComment,
-                userId: updatedComment.userId
-                  ? { ...c.userId, ...updatedComment.userId }
-                  : c.userId,
+                userId: updatedComment.userId ? { ...c.userId, ...updatedComment.userId } : c.userId,
               }
             : c
         )
@@ -309,10 +303,10 @@ export default function Post({
         method: 'DELETE',
         headers: {
           'x-user-id': user.userId,
-          'Authorization': `Bearer ${authToken}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
-      if (!res.ok) throw new Error(await res.text() || 'Не удалось удалить комментарий');
+      if (!res.ok) throw new Error((await res.text()) || 'Не удалось удалить комментарий');
       setCommentsState((prev) => prev.filter((c) => c._id !== commentId));
       await fetchPosts();
     } catch (err: any) {
@@ -320,15 +314,19 @@ export default function Post({
     }
   };
 
-  // Обновлённая логика для avatarUrl и username
-  const displayUsername = isCommunityPost ? (username || 'Unknown Community') : (username || 'Unknown User');
+  const displayUsername = isCommunityPost ? username || 'Unknown Community' : username || 'Unknown User';
   const avatarUrl = isCommunityPost
-    ? (userAvatar && userAvatar.trim() && userAvatar !== '/default-avatar.png' ? userAvatar : '/default-community-avatar.png')
-    : (userAvatar && userAvatar.trim() && userAvatar !== '/default-avatar.png' ? userAvatar : '/default-avatar.png');
+    ? userAvatar && userAvatar.trim() && userAvatar !== '/default-avatar.png'
+      ? userAvatar
+      : '/default-community-avatar.png'
+    : userAvatar && userAvatar.trim() && userAvatar !== '/default-avatar.png'
+    ? userAvatar
+    : '/default-avatar.png';
 
-  const formattedDate = typeof createdAt === 'number'
-    ? formatDistanceToNow(new Date(createdAt), { addSuffix: true })
-    : formatDistanceToNow(new Date(createdAt), { addSuffix: true });
+  const formattedDate =
+    typeof createdAt === 'number'
+      ? formatDistanceToNow(new Date(createdAt), { addSuffix: true })
+      : formatDistanceToNow(new Date(createdAt), { addSuffix: true });
 
   const canEdit = onEdit && (user?.userId === userId || (isAdmin && currentUserId));
   const canDelete = onDelete && (user?.userId === userId || (isAdmin && currentUserId));
@@ -343,7 +341,9 @@ export default function Post({
             width={40}
             height={40}
             className="me-3"
-            onError={(e) => { (e.target as HTMLImageElement).src = isCommunityPost ? '/default-community-avatar.png' : '/default-avatar.png'; }}
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = isCommunityPost ? '/default-community-avatar.png' : '/default-avatar.png';
+            }}
           />
           <div>
             <Card.Title>{displayUsername}</Card.Title>
@@ -373,10 +373,7 @@ export default function Post({
                   }}
                   style={{ display: 'none' }}
                 />
-                <Button
-                  variant="outline-secondary"
-                  onClick={() => fileInputRef.current?.click()}
-                >
+                <Button variant="outline-secondary" onClick={() => fileInputRef.current?.click()}>
                   <Paperclip />
                 </Button>
               </div>
@@ -446,15 +443,13 @@ export default function Post({
             {reactions.length > 0 && (
               <div className="mt-2">
                 {reactions.map((r) => (
-                  <span key={r.emoji} className="me-2">{r.emoji} ({r.users.length})</span>
+                  <span key={r.emoji} className="me-2">
+                    {r.emoji} ({r.users.length})
+                  </span>
                 ))}
               </div>
             )}
-            <Button
-              variant="link"
-              onClick={() => setShowComments(!showComments)}
-              className="mt-2"
-            >
+            <Button variant="link" onClick={() => setShowComments(!showComments)} className="mt-2">
               {showComments ? 'Скрыть комментарии' : 'Показать комментарии'} ({commentsState.length})
             </Button>
             {showComments && (
@@ -503,10 +498,7 @@ export default function Post({
                         }}
                         style={{ display: 'none' }}
                       />
-                      <Button
-                        variant="outline-secondary"
-                        onClick={() => commentFileInputRef.current?.click()}
-                      >
+                      <Button variant="outline-secondary" onClick={() => commentFileInputRef.current?.click()}>
                         <Paperclip />
                       </Button>
                       <Button

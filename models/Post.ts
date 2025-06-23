@@ -16,6 +16,28 @@ export interface UserDocument extends Document {
   avatar?: string;
 }
 
+export interface PopulatedPost {
+  _id: string;
+  content: string;
+  userId: { _id: string; username: string; avatar?: string } | null;
+  community: { _id: string; name: string; avatar?: string } | null;
+  isCommunityPost: boolean;
+  createdAt: Date;
+  updatedAt?: Date;
+  likes: string[];
+  reactions: { emoji: string; users: string[] }[];
+  images: string[];
+  comments: {
+    _id: string;
+    userId: { _id: string; username: string; avatar?: string } | null;
+    content: string;
+    createdAt: Date;
+    images?: string[];
+    likes?: string[];
+    reactions?: { emoji: string; users: string[] }[];
+  }[];
+}
+
 export interface PostDocument extends Document {
   userId: UserDocument | Types.ObjectId | null;
   community: Types.ObjectId | null;
